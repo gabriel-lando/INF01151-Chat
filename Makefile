@@ -1,7 +1,7 @@
 CXX       := g++
 CXX_FLAGS := -std=c++17 -ggdb
 
-SRC_DIR     := src
+SRC_DIR := src
 INCLUDE := include
 
 LIBRARIES   :=
@@ -12,7 +12,7 @@ SERVER_EXE := bin/server
 
 ## Sources Client
 RAW_CLIENTS_SRCS := client.cpp
-CLIENT_SRCS = $(addprefix $(SRC_DIR)/, $(RAW_CLIENTSRCS))
+CLIENT_SRCS = $(addprefix $(SRC_DIR)/, $(RAW_CLIENT_SRCS))
 
 ## Sources Server
 RAW_SERVER_SRCS := server.cpp
@@ -24,9 +24,9 @@ SRCS = $(addprefix $(SRC_DIR)/, $(RAW_SRCS))
 
 ## Object files
 RAW_CLIENT_OBJS := $(RAW_CLIENT_SRCS:%.cpp=%.o)
-CLIENT_OBJS := $(addprefix $(SRC)/, $(RAW_CLIENT_SRCS))
+CLIENT_OBJS := $(addprefix $(SRC_DIR)/, $(RAW_CLIENT_SRCS))
 RAW_SERVER_OBJS := $(RAW_SERVER_SRCS:%.cpp=%.o)
-SERVER_OBJS := $(addprefix $(SRC)/, $(RAW_SERVER_SRCS))
+SERVER_OBJS := $(addprefix $(SRC_DIR)/, $(RAW_SERVER_SRCS))
 RAW_OBJS := $(RAW_SRCS:%.cpp=%.o)
 OBJS := $(addprefix $(BUILDDIR)/, $(RAW_OBJS))
 
@@ -42,7 +42,7 @@ $(SERVER_EXE): $(OBJS) $(SERVER_OBJS)
 	@echo " Link server:";
 	$(CC) $^ -o $(SERVER_EXE) $(LIB)
 
-$(BUILDDIR)/%.o: $(SRC)/%.cpp
+$(BUILDDIR)/%.o: $(SRC_DIR)/%.cpp
 	@echo " ";
 	@echo " Compile $<";
 	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
@@ -50,8 +50,8 @@ $(BUILDDIR)/%.o: $(SRC)/%.cpp
 run: clean all
 	./$(BIN)/$(EXECUTABLE)
 
-$(BIN)/$(EXECUTABLE): $(SRC)/client.cpp
-	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) $^ -o $@ $(LIBRARIES)
+#$(BIN)/$(EXECUTABLE): $(SRC_DIR)/client.cpp
+#	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) $^ -o $@ $(LIBRARIES)
 
 clean:
 	-rm $(BIN)/*

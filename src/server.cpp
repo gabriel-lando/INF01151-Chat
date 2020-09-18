@@ -13,6 +13,33 @@ void error(char *msg)
     exit(1);
 }
 
+/*
+ There is a separate instance of this function 
+ for each connection.  It handles all communication
+ once a connnection has been established.
+*/
+void handle_communication (int sock)
+{
+   int n;
+   char buffer[256];
+      
+   bzero(buffer, 256);
+   n = read(sock, buffer, 255);
+
+   if (n < 0) 
+   {
+        error("ERROR reading from socket");
+   }
+
+   printf("Here is the message: %s\n", buffer);
+   n = write(sock, "I got your message", 18);
+
+   if (n < 0) 
+   {
+       error("ERROR writing to socket");
+   }
+}
+
 int main(int argc, char *argv[])
 {     
     int sockfd, newsockfd, portno, cli_len;
@@ -46,9 +73,32 @@ int main(int argc, char *argv[])
     }
 
     listen(sockfd, 256);
-
     cli_len = sizeof(cli_addr);
+    while(1)
+    {
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, (socklen_t*)(&cli_len));
+                 
+        if (newsockfd < 0)
+        {
+            error("ERROR on accept");
+        }
+        int pid = fork();
+
+        if (pid < 0)
+        {
+            error("ERROR on fork");
+        }
+
+        if (pid == 0)  
+        {
+            close(sockfd);
+            handle_communication(newsockfd);
+            exit(0); 
+        }
+        else close(newsockfd);
+    }
     
+    return 0;
     // system call causes the process to block until a client connects to the server
     newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, (socklen_t*)(&cli_len));
 
