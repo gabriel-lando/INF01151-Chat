@@ -1,60 +1,65 @@
-CXX       := g++
-CXX_FLAGS := -std=c++17 -ggdb
+# Compiler options 
+CC := g++ -std=c++17
+CFLAGS = -g -Wall -Wextra -Werror
+LIB := -pthread
+INC := -I include
 
-SRC_DIR := src
+# Project dirs
+SRCDIR := src
 BUILDDIR := build
-INCLUDE := -I include
 
-LIBRARIES   :=
-
+# Project files
 ## Executables
-CLIENT_EXE := bin/client
-SERVER_EXE := bin/server
-
-## Sources Client
-RAW_CLIENTS_SRCS := client.cpp
-CLIENT_SRCS = $(addprefix $(SRC_DIR)/, $(RAW_CLIENT_SRCS))
-
-## Sources Server
-RAW_SERVER_SRCS := server.cpp
-SERVER_SRCS = $(addprefix $(SRC_DIR)/, $(RAW_SERVER_SRCS))
-
+CLIENTEXE := bin/client
+SERVEREXE := bin/server
+## Sources
+RAWCLIENTSRCS := client.cpp
+CLIENTSRCS = $(addprefix $(SRCDIR)/, $(RAWCLIENTSRCS))
+RAWSERVERSRCS := server.cpp
+SERVERSRCS = $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
 ## Sources used by both
-RAW_SRCS = helper.cpp
-SRCS = $(addprefix $(SRC_DIR)/, $(RAW_SRCS))
-
+RAWSRCS = helper.cpp
+SRCS = $(addprefix $(SRCDIR)/, $(RAWSRCS))
 ## Object files
-RAW_CLIENT_OBJS := $(RAW_CLIENT_SRCS:%.cpp=%.o)
-CLIENT_OBJS := $(addprefix $(SRC_DIR)/, $(RAW_CLIENT_SRCS))
-RAW_SERVER_OBJS := $(RAW_SERVER_SRCS:%.cpp=%.o)
-SERVER_OBJS := $(addprefix $(SRC_DIR)/, $(RAW_SERVER_SRCS))
-RAW_OBJS := $(RAW_SRCS:%.cpp=%.o)
-OBJS := $(addprefix $(BUILDDIR)/, $(RAW_OBJS))
+RAWCLIENTOBJS := $(RAWCLIENTSRCS:%.cpp=%.o)
+CLIENTOBJS := $(addprefix $(SRCDIR)/, $(RAWCLIENTSRCS))
+RAWSERVEROBJS := $(RAWSERVERSRCS:%.cpp=%.o)
+SERVEROBJS := $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
+RAWOBJS := $(RAWSRCS:%.cpp=%.o)
+OBJS := $(addprefix $(BUILDDIR)/, $(RAWOBJS))
 
-all: $(CLIENT_EXE) $(SERVER_EXE)
+# Rules
+all: $(CLIENTEXE) $(SERVEREXE)
+	@echo " ";
+	@echo " Done!"
 
-$(CLIENT_EXE): $(OBJS) $(CLIENT_OBJS)
+debug: CFLAGS += -DDEBUG
+debug: all
+	@echo " Debug mode"
+
+$(CLIENTEXE): $(OBJS) $(CLIENTOBJS)
 	@echo " ";
 	@echo " Link client:";
-	$(CC) $^ -o $(CLIENT_EXE) $(LIB)
+	$(CC) $^ -o $(CLIENTEXE) $(LIB)
 
-$(SERVER_EXE): $(OBJS) $(SERVER_OBJS)
+$(SERVEREXE): $(OBJS) $(SERVEROBJS)
 	@echo " ";
 	@echo " Link server:";
-	$(CC) $^ -o $(SERVER_EXE) $(LIB)
+	$(CC) $^ -o $(SERVEREXE) $(LIB)
 
-$(BUILDDIR)/%.o: $(SRC_DIR)/%.cpp
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 	@echo " ";
 	@echo " Compile $<";
 	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
 
-run: clean all
-	./$(BIN)/$(EXECUTABLE)
-
-#$(BIN)/$(EXECUTABLE): $(SRC_DIR)/client.cpp
-#	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) $^ -o $@ $(LIBRARIES)
+# Tests
+#tester:
+#	$(CC) $(CFLAGS) test/tester.cpp $(INC) $(LIB) -o bin/tester.exe
 
 clean:
 	@echo " Cleaning...";
 	$(RM) $(BUILDDIR)/*.o $(CLIENTEXE) $(SERVEREXE);
 	@echo " Cleaned!"
+
+rebuild: clean all
+redebug: clean debug

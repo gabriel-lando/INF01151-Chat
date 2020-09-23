@@ -1,4 +1,4 @@
-#include "/server.hpp"
+#include "server.hpp"
 
 /*
  There is a separate instance of this function 
