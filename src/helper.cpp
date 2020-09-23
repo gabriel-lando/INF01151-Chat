@@ -1,7 +1,7 @@
 #include "helper.hpp"
 
-void error(char *msg)
+void error(string msg)
 {
-    perror(msg);
+    cout << msg << endl;
     exit(0);
 }

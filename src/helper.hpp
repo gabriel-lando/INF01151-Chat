@@ -20,4 +20,4 @@ using namespace std;
 #define DEFAULT_HOSTNAME "localhost"
 
 // functions 
-void error(char* msg);
+void error(string msg);
