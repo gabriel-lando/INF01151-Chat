@@ -1,30 +1,19 @@
-#include <stdio.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-
-void error(char *msg)
-{
-    perror(msg);
-    exit(1);
-}
+#include "/server.hpp"
 
 /*
  There is a separate instance of this function 
  for each connection.  It handles all communication
  once a connnection has been established.
 */
-void handle_communication (int sock)
+void Server::handle_communication (int sock)
 {
    int n;
    char buffer[256];
       
    bzero(buffer, 256);
    n = read(sock, buffer, 255);
+
+   cout << DEFAULT_PORT << endl;
 
    if (n < 0) 
    {
@@ -41,7 +30,8 @@ void handle_communication (int sock)
 }
 
 int main(int argc, char *argv[])
-{     
+{   
+    Server *server = new Server();  
     int sockfd, newsockfd, portno, cli_len;
     char buffer[256];
     struct sockaddr_in serv_addr, cli_addr;
@@ -92,7 +82,7 @@ int main(int argc, char *argv[])
         if (pid == 0)  
         {
             close(sockfd);
-            handle_communication(newsockfd);
+            server->handle_communication(newsockfd);
             exit(0); 
         }
         else close(newsockfd);

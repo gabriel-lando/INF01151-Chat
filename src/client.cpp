@@ -1,18 +1,6 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
+#include "client.hpp"
 
-void error(char *msg)
-{
-    perror(msg);
-    exit(0);
-}
+
 // The user should establish the connection to the server with the following parameters:
 // <username> <groupname> <server_ip_address> <port>
 int main(int argc, char *argv[])
@@ -21,6 +9,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in serv_addr;
     struct hostent *server;
+    struct in_addr addr;
 
     char buffer[256];
     if (argc < 3) 
@@ -37,8 +26,10 @@ int main(int argc, char *argv[])
         error("ERROR opening socket");
     }
 
-    server = gethostbyname(argv[1]);
-
+    //server = gethostbyname(argv[1]);
+    inet_aton(argv[1], &addr);
+    server = gethostbyaddr(argv[1], sizeof(addr), AF_INET);
+    
     if (server == NULL) 
     {
         fprintf(stderr,"ERROR, no such host\n");

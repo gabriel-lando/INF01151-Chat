@@ -2,7 +2,8 @@ CXX       := g++
 CXX_FLAGS := -std=c++17 -ggdb
 
 SRC_DIR := src
-INCLUDE := include
+BUILDDIR := build
+INCLUDE := -I include
 
 LIBRARIES   :=
 
@@ -19,7 +20,7 @@ RAW_SERVER_SRCS := server.cpp
 SERVER_SRCS = $(addprefix $(SRC_DIR)/, $(RAW_SERVER_SRCS))
 
 ## Sources used by both
-RAW_SRCS = 
+RAW_SRCS = helper.cpp
 SRCS = $(addprefix $(SRC_DIR)/, $(RAW_SRCS))
 
 ## Object files
@@ -54,4 +55,6 @@ run: clean all
 #	$(CXX) $(CXX_FLAGS) -I$(INCLUDE) $^ -o $@ $(LIBRARIES)
 
 clean:
-	-rm $(BIN)/*
+	@echo " Cleaning...";
+	$(RM) $(BUILDDIR)/*.o $(CLIENTEXE) $(SERVEREXE);
+	@echo " Cleaned!"
