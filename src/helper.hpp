@@ -21,3 +21,4 @@ using namespace std;
 
 // functions 
 void error(string msg);
+bool check_name(const string &name);

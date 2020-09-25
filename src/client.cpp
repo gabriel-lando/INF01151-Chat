@@ -11,16 +11,20 @@ int main(int argc, char *argv[])
     struct hostent *server;
     struct in_addr addr;
 
-    string username = argv[1];
-    string group_name = argv[2];
+    string username =  check_name(argv[1]) ? argv[1] : "invalid";
+    string group_name = check_name(argv[2]) ? argv[2] : "invalid";
     const char* server_ip = argv[3];
     const char* port = argv[4];
+
+    if(username == "invalid"|| group_name == "invalid")
+    {
+        error("the username and group name can only contain letters, numbers and dot and must have between 4 and 20 characteres");
+    }
 
     char buffer[256];
     if (argc < 3) 
     {
-       fprintf(stderr,"usage %s hostname port\n", argv[0]);
-       exit(0);
+       error("Please provide more arguments");
     }
 
     portno = atoi(port);
