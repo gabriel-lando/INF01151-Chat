@@ -2,7 +2,7 @@
 
 void error(string msg)
 {
-    cout << msg << endl;
+    cerr << msg << endl;
     exit(0);
 }
 

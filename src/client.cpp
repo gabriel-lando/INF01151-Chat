@@ -4,8 +4,9 @@ char GetChar();
 void SetCursorPosition(int x, int y);
 void SetTerminalSize(int x, int y);
 string ReadMessage();
+void ProcessPacket(packet *pkt);
 void WriteMessage(string message);
-char ProcessChar(char c);
+char ProcessChar(char c, int * count);
 void WriteLine(int x, char c);
 void PrintLayout(string username, string group);
 
@@ -15,11 +16,40 @@ string username;
 int usernameLen = 0;
 int linePosition = 0;
 
+int curs_pos = SCREEN_SIZE_X - 1;
+
+typedef struct {
+    char* prompt;
+    int socket;
+} thread_data;
+
+
+void * receive(void * sockfd) {
+    int socket_fd, response;
+    char buffer[sizeof(packet)];
+    socket_fd = *(int*)sockfd;
+
+    while(true) {
+        bzero(buffer, sizeof(packet));
+        response = recvfrom(socket_fd, buffer, sizeof(packet), 0, NULL, NULL);
+
+        if (response == -1)
+            error("Recv failed\n");
+        else if (response == 0)
+            error("Peer disconnected\n");
+
+        packet *resp = (packet*)buffer;
+        
+        ProcessPacket(resp);
+    }
+}
+
 // The user should establish the connection to the server with the following parameters:
 // <username> <groupname> <server_ip_address> <port>
 int main(int argc, char *argv[])
 {
     int sockfd, portno, n;
+    pthread_t receive_thread;
 
     struct sockaddr_in serv_addr;
     struct hostent *server;
@@ -31,50 +61,37 @@ int main(int argc, char *argv[])
     const char* port = argv[4];
 
     if(username == "invalid"|| group_name == "invalid")
-    {
         error("the username and group name can only contain letters, numbers and dot and must have between 4 and 20 characteres");
-    }
 
     usernameLen = username.length();
 
     char buffer[sizeof(packet)];
-    if (argc < 3) 
-    {
+    if (argc < 3)
        error("Please provide more arguments");
-    }
 
     portno = atoi(port);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sockfd < 0)
-    {
         error("ERROR opening socket");
-    }
 
     // Convert IPv4 and IPv6 addresses from text to binary form 
-    if(inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)  
-    { 
-        error("Invalid address/ Address not supported"); 
-        return -1; 
-    } 
+    if(inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
+        error("Invalid address/ Address not supported");
 
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(portno);
     
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)
-    {
         error("ERROR connecting");
-    }
-
+    
     PrintLayout(username, group_name);
+
+    pthread_create(&receive_thread, NULL, receive, (void *) &sockfd);
 
     while(true)
     {
-        /*printf("Please enter the message: ");
-        bzero(buffer, 256);
-        fgets(buffer, 255, stdin);*/
-
         string message = ReadMessage();
         packet pkt;
         pkt.timestamp = get_time();
@@ -84,35 +101,26 @@ int main(int argc, char *argv[])
         n = write(sockfd, reinterpret_cast<char*>(&pkt), sizeof(packet));
         
         if (n < 0)
-        {
             error("ERROR writing to socket");
-        }
-        
-        bzero(buffer, sizeof(packet));
-        n = read(sockfd, buffer, sizeof(packet));
-        
-        if (n < 0)
-        {
-            error("ERROR reading from socket");
-        }
-
-        packet *resp = (packet*)buffer;
-        string response = get_timestamp(resp->timestamp) + " " + string(resp->username) + ": " + string(resp->message);
-
-        WriteMessage(response);
     }
 }
 
-string ReadMessage(){
+string ReadMessage() {
+
+    mtx.lock();
+    SetCursorPosition(usernameLen + 2, curs_pos);
+    WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
+    SetCursorPosition(usernameLen + 2, curs_pos);
+    mtx.unlock();
+
     int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1;
     char *temp = (char*) calloc(msg_len * sizeof(char), sizeof(char));
     int count = 0;
     char c;
+    // ToDo: add a function to set cursor to current position when a message is received
     while((c = GetChar()) != '\n' && count < msg_len || count == 0){
-        c = ProcessChar(c);
-        if (c == -1)
-            count--;
-        else if (c != 0)
+        c = ProcessChar(c, &count);
+        if (c > 0)
             temp[count++] = c;
     }
     temp[count] = '\0';
@@ -120,30 +128,37 @@ string ReadMessage(){
     return string(temp);
 }
 
-void WriteMessage(string message){
-    static int curs_pos = SCREEN_SIZE_X - 1;
-    static int nameLen = usernameLen + 2;
+void ProcessPacket(packet *pkt) {
+    string msguser = string(pkt->username);
+    if (msguser == username)
+        msguser = "voce";
     
+    string message = get_timestamp(pkt->timestamp) + " " + msguser + ": " + string(pkt->message);
+
+    WriteMessage(message);
+}
+
+void WriteMessage(string message){
     mtx.lock();
 
     SetCursorPosition(0, linePosition++);
-    cout << message;
+    cerr << message;
 
     if (linePosition >= SCREEN_SIZE_X - 1){
         SetCursorPosition(0, SCREEN_SIZE_X - 1);
-        WriteLine(SCREEN_SIZE_Y - nameLen, ' ');
+        WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
         SetCursorPosition(0, curs_pos);
-        WriteLine(SCREEN_SIZE_Y - nameLen, ' ');
+        WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
         curs_pos++;
         linePosition--;
 
         SetCursorPosition(0, curs_pos);
-        cout << "\n" << username << ": ";
+        cerr << "\n" << username << ": ";
     }
 
-    SetCursorPosition(nameLen, curs_pos);
-    WriteLine(SCREEN_SIZE_Y - nameLen, ' ');
-    SetCursorPosition(nameLen, curs_pos);
+    SetCursorPosition(usernameLen + 2, curs_pos);
+    WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
+    SetCursorPosition(usernameLen + 2, curs_pos);
 
     mtx.unlock();
 }
@@ -155,31 +170,30 @@ void PrintLayout(string username, string group){
     system("clear");
     SetCursorPosition(0, 0);
 
-    cout << "GRUPO: " << group << endl;
+    cerr << "GRUPO: " << group << endl;
     WriteLine(SCREEN_SIZE_Y, '-');
 
     SetCursorPosition(0, SCREEN_SIZE_X - 1);
-    cout << username << ": ";
+    cerr << username << ": ";
 
     linePosition = 2;
     mtx.unlock();
 }
 
 void SetCursorPosition(int x, int y) {
-    printf("\033[%d;%dH",y+1,x+1);
+    fprintf(stderr, "\033[%d;%dH",y+1,x+1);
 }
 
 void SetTerminalSize(int x, int y) {
-    printf("\e[8;%d;%dt",x,y);
+    fprintf(stderr, "\e[8;%d;%dt",x,y);
 }
 
-void WriteLine(int x, char c){
+void WriteLine(int x, char c) {
     for (int i = 0; i < x; i++)
-        putchar(c);
+        cerr << c;
 }
 
-char GetChar(void)
-{
+char GetChar(void) {
     int ch;
     struct termios oldt;
     struct termios newt;
@@ -192,22 +206,21 @@ char GetChar(void)
     return ch;
 }
 
-char ProcessChar(char c){
-    mtx.lock();
+char ProcessChar(char c, int * count) {
+    if (c >= 32 && c <= 126) {
+        mtx.lock();
+        cerr << c;
+        mtx.unlock();
 
-    if (c == 127) {
-        putchar('\b');
-        putchar(' ');
-        putchar('\b');
-        c = -1;
-    }
-    else if (c >= 32 && c <= 126) {
-        putchar(c);
-    }
-    else {
-        c = 0;
+        return c;
     }
 
-    mtx.unlock();
-    return c;
+    if (c == 127 && *count > 0) {
+        mtx.lock();
+        cerr << "\b \b"; // backspace space backspace
+        mtx.unlock();
+        (*count)--;
+    }
+    
+    return 0;
 }
