@@ -4,8 +4,13 @@ CFLAGS = -g -Wall -Wextra -Werror
 LIB := -pthread
 INC := -I include
 
+# Macros
+MKDIR := mkdir -p
+RM := rm -rf
+
 # Project dirs
 SRCDIR := src
+BINDIR := bin
 BUILDDIR := build
 
 # Project files
@@ -28,8 +33,10 @@ SERVEROBJS := $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
 RAWOBJS := $(RAWSRCS:%.cpp=%.o)
 OBJS := $(addprefix $(BUILDDIR)/, $(RAWOBJS))
 
+.PHONY: directories
+
 # Rules
-all: $(CLIENTEXE) $(SERVEREXE)
+all: directories $(CLIENTEXE) $(SERVEREXE)
 	@echo " ";
 	@echo " Done!"
 
@@ -52,13 +59,17 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 	@echo " Compile $<";
 	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
 
+directories:
+	$(MKDIR) $(BUILDDIR)
+	$(MKDIR) $(BINDIR)
+
 # Tests
 #tester:
 #	$(CC) $(CFLAGS) test/tester.cpp $(INC) $(LIB) -o bin/tester.exe
 
 clean:
 	@echo " Cleaning...";
-	$(RM) $(BUILDDIR)/*.o $(CLIENTEXE) $(SERVEREXE);
+	$(RM) $(BUILDDIR)/*.o $(CLIENTEXE) $(SERVEREXE) $(BUILDDIR) $(BINDIR);
 	@echo " Cleaned!"
 
 rebuild: clean all
