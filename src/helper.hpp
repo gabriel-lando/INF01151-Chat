@@ -13,6 +13,12 @@
 #include <arpa/inet.h>
 #include <iostream>
 #include <pthread.h>
+#include <termios.h>
+#include <mutex>
+#include <thread>
+#include <ctime>
+#include <sys/time.h>
+#include <iomanip>
 
 using namespace std;
 
@@ -23,3 +29,12 @@ using namespace std;
 // functions 
 void error(string msg);
 bool check_name(const string &name);
+time_t get_time();
+string get_timestamp(time_t time);
+
+typedef struct __packet{
+    time_t timestamp; //Timestamp do dado
+    uint16_t length; //Comprimento do payload
+    char username[20]; //Nome do usuario
+    char message[100]; //Dados da mensagem
+} packet;

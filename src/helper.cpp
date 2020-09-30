@@ -17,3 +17,14 @@ bool check_name(const string &name)
     }
     return true;
 }
+
+time_t get_time(){
+    return std::time(nullptr);
+}
+
+string get_timestamp(time_t time) {
+    auto tm = *localtime(&time);
+    std::ostringstream oss;
+    oss << put_time(&tm, "%H:%M:%S");
+    return oss.str();
+}

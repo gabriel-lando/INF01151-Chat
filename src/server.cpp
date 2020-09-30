@@ -8,19 +8,21 @@
 void Server::handle_communication (int sock)
 {
     int n;
-    char buffer[256];
+    char buffer[sizeof(packet)];
 
       
-    bzero(buffer, 256);
-    n = read(sock, buffer, 255);
+    bzero(buffer, sizeof(packet));
+    n = read(sock, buffer, sizeof(packet));
 
     if (n < 0) 
     {
         error("ERROR reading from socket");
     }
+
+    packet *pkt = (packet*)buffer;
         
-    printf("Here is the message: %s\n", buffer);
-    n = write(sock, "I got your message", 255);
+    printf("Here is the message: %s\n", pkt->message);
+    n = write(sock, buffer, sizeof(packet));
 
     if (n < 0) 
     {
@@ -86,6 +88,7 @@ int main(int argc, char *argv[])
         {
             error("ERROR on accept");
         }
+
 
         pid = fork();
 
