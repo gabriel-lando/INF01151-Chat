@@ -1,6 +1,6 @@
 #include "helper.hpp"
 
-#define MAX_THREADS 256
+#define MAX_CONNS 256
 
 class Server
 {

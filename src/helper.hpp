@@ -37,5 +37,6 @@ typedef struct __packet{
     time_t timestamp; //Timestamp do dado
     uint16_t length; //Comprimento do payload
     char username[20]; //Nome do usuario
+    char groupname[50]; //Nome do usuario
     char message[100]; //Dados da mensagem
 } packet;

@@ -95,6 +95,7 @@ int main(int argc, char *argv[])
         string message = ReadMessage();
         packet pkt;
         pkt.timestamp = get_time();
+        strcpy(pkt.groupname, group_name.c_str());
         strcpy(pkt.username, username.c_str());
         strcpy(pkt.message, message.c_str());
 
