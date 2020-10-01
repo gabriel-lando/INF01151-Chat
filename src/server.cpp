@@ -2,219 +2,255 @@
 
 std::mutex mtx;
 
-/*typedef struct {
-    int socket_id;
-    packet content;
-} message_str;*/
+string groups[MAX_CONNS];
 
-typedef struct _sockets_id {
-    int id;
-    time_t timestamp;
-    struct _sockets_id *next;
-} sockets_id;
+// typedef struct _sockets_id {
+//     int id;
+//     time_t timestamp;
+//     struct _sockets_id * volatile next;
+// } sockets_id;
 
-typedef struct _groups {
-    string groupname;
-    sockets_id *id;
-    struct _groups *next;
-} groups;
+// typedef struct _groups {
+//     string groupname;
+//     sockets_id * volatile id;
+//     struct _groups * volatile next;
+// } groups;
 
-groups *listGroups = NULL;
+// groups *volatile listGroups = NULL;
 
-sockets_id * GetIDs(string groupname){
-    if (listGroups == NULL)
-        return NULL;
+// sockets_id * GetIDs(string groupname){
+//     if (listGroups == NULL)
+//         return NULL;
 
-    cerr << "GET IDs name: " << groupname << endl;
+//     std::cerr << "GET IDs from group: " << groupname << endl;
 
-    groups *tmp = listGroups;
-    while (tmp != NULL){
-        if (tmp->groupname == groupname){
+//     groups *tmp = listGroups;
 
-            sockets_id *ids = tmp->id;
-            while (ids != NULL){
-                cerr << "GET IDs: " << ids->id << endl;
-                ids = ids->next;
-            }
+//     while (tmp != NULL){
+//         if (tmp->groupname == groupname){
 
-            return tmp->id;
-        }
-        tmp = tmp->next;
-    }
-    return NULL;
-}
+//             /*sockets_id *ids = tmp->id;
+//             while (ids != NULL){
+//                 std::thread::id this_id = std::this_thread::get_id();
+//                 std::cerr << "Thread: " << this_id << endl;
+//                 std::cerr << "GET IDs: " << ids->id << endl;
+//                 sleep(10);
+//                 ids = ids->next;
+//             }*/
 
-groups *InsertSocketID(groups *group, int id) {
-    sockets_id *tmp = group->id;
+//             return tmp->id;
+//         }
+//         tmp = tmp->next;
+//     }
+//     return NULL;
+// }
 
-    while (tmp != NULL){
-        if (tmp->id == id)
-            break;
-        tmp = tmp->next;
-    }
+// void PrintList(){
+//     int x = 0, y;
 
-    if (tmp == NULL) {
-        tmp = (sockets_id*)malloc(sizeof(sockets_id));
-        tmp->id = id;
-        tmp->next = group->id;
-    }
+//     std::cerr << "------- Printing List ------" << endl;
+//     groups *tmp = listGroups;
+//     while(tmp != NULL) {
+//         std::cerr << x++ << ": " << tmp->groupname << endl;
+//         y = 0;
+//         sockets_id *tmp_id = tmp->id;
+//         while (tmp_id != NULL){
+//             std::cerr << '\t' << y++ << ": " << tmp_id->id << endl;
+//             //sleep(10);
+//             tmp_id = tmp_id->next;
+//         }
+//         tmp = tmp->next;
+//     }
+//     std::cerr << "----------------------------" << endl;
+// }
 
-    cerr << "Insert ID: " << id << " ID: " << tmp->id << endl;
+// groups *InsertSocketID(groups *group, int id) {
+//     sockets_id *curr = group->id, *last;
 
-    group->id = tmp;
-    return group;
-}
+//     while (curr != NULL){
+//         if (curr->id == id)
+//             break;
+//         last = curr;
+//         curr = curr->next;
+//     }
 
-void RemoveIdFromGroup(string groupname, int socket_id) {
-    if (listGroups == NULL)
-        return;
+//     if (curr == NULL) {
+//         curr = (sockets_id*)malloc(sizeof(sockets_id));
+//         curr->id = id;
+
+//         if (group->id == NULL) { group->id = curr; }
+//         else { last->next = curr; }
+//     }
+
+//     std::cerr << "Insert ID: " << id << " ID: " << curr->id << endl;
+//     return group;
+// }
+
+// void RemoveIdFromGroup(string groupname, int socket_id) {
+//     if (listGroups == NULL)
+//         return;
     
-    groups *prev = listGroups, *curr = listGroups;
+//     groups *prev = listGroups, *curr = listGroups;
 
-    cerr << "Remove Group: " << groupname << " ID: " << socket_id << endl;
+//     std::cerr << "Remove Group: " << groupname << " ID: " << socket_id << endl;
 
-    while (curr != NULL) {
-        if (curr->groupname == groupname){
-            sockets_id *prev_id = curr->id, *curr_id = curr->id;
-            while (curr_id != NULL) {
-                if (curr_id->id == socket_id) {
-                    prev_id->next = curr_id->next;
-                    free(curr_id);
-                    break;
-                }
+//     while (curr != NULL) {
+//         if (curr->groupname == groupname){
+//             sockets_id *prev_id = curr->id, *curr_id = curr->id;
+//             while (curr_id != NULL) {
+//                 if (curr_id->id == socket_id) {
+//                     curr_id->id = 0;
+//                     /*if (prev_id == curr_id) { curr_id->id = 0; }
+//                     else { prev_id->next = curr_id->next; }
+//                     free(curr_id);*/
+//                     break;
+//                 }
 
-                prev_id = curr_id;
-                curr_id = curr_id->next;
-            }
+//                 prev_id = curr_id;
+//                 curr_id = curr_id->next;
+//             }
 
-            if (curr->id == NULL) {
-                prev->next = curr->next;
-                free(curr);
-                break;
-            }
-        }
+//             if (curr->id == NULL) {
+//                 curr->groupname.clear();
+//                 /*if (curr == prev) {
+//                     listGroups->groupname = "";
+//                 }
+//                 else {
+//                     prev->next = curr->next;
+//                     free(curr);
+//                 }*/
+//                 /*if (curr == prev) { listGroups = listGroups->next; }
+//                 else { prev->next = curr->next; }*/
+                
+//                 break;
+//             }
+//         }
 
-        prev = curr;
-        curr = curr->next;
-    }
-}
+//         prev = curr;
+//         curr = curr->next;
+//     }
+// }
 
-void InsertGroup(string groupname, int socket_id){
-    groups *tmp = listGroups;
+// void InsertGroup(string groupname, int socket_id){
+//     groups *curr = listGroups, *last;
 
-    while (tmp != NULL){
-        if (tmp->groupname == groupname){
-            cerr << "Find group: " << tmp->groupname << endl;
-            tmp = InsertSocketID(tmp, socket_id);
-            cerr << "Inserted ID: " << socket_id << endl;
-            break;
-        }
-        tmp = tmp->next;
-    }
+//     while (curr != NULL){
+//         if (curr->groupname == groupname){
+//             std::cerr << "Find group: " << curr->groupname << endl;
+//             curr = InsertSocketID(curr, socket_id);
+//             std::cerr << "Inserted ID: " << socket_id << endl;
+//             break;
+//         }
+//         last = curr;
+//         curr = curr->next;
+//     }
 
-    if (tmp == NULL) {
-        tmp = (groups*)malloc(sizeof(groups));
-        tmp->next = listGroups;
-        tmp->id = NULL;
-        tmp->groupname = groupname;
-        tmp = InsertSocketID(tmp, socket_id);
+//     if (curr == NULL) {
+//         curr = (groups*)malloc(sizeof(groups));
+//         curr->next = NULL;
+//         curr->id = NULL;
+//         curr->groupname = groupname;
+//         curr = InsertSocketID(curr, socket_id);
 
-        listGroups = tmp;
-    }
+//         if (listGroups == NULL) { listGroups = curr; }
+//         else { last->next = curr; }
+//     }
 
-    cerr << "Group: " << tmp->groupname << " ID: " << tmp->id->id << endl;
-}
+//     std::cerr << "Group: " << curr->groupname << " ID: " << curr->id->id << endl;
+// }
 
-void RemoveID(int id) {
-    if (listGroups == NULL)
-        return;
+// void RemoveID(int id) {
+//     if (listGroups == NULL)
+//         return;
 
-    cerr << "Removing only ID: " << id << endl;
+//     std::cerr << "Removing only ID: " << id << endl;
 
-    groups *tmp = listGroups;
-    while (tmp != NULL){
-        RemoveIdFromGroup(tmp->groupname, id);
-        tmp = tmp->next;
-    }
-}
+//     groups *tmp = listGroups;
+//     while (tmp != NULL){
+//         RemoveIdFromGroup(tmp->groupname, id);
+//         tmp = tmp->next;
+//     }
+// }
+
+// bool ClientIsConnected(int id) {
+//     if (listGroups == NULL)
+//         return false;
+    
+//     groups *tmp = listGroups;
+//     while (tmp != NULL){
+//         sockets_id *ids = GetIDs(tmp->groupname);
+//         while (ids != NULL){
+//             if (ids->id == id)
+//                 return true;
+//             ids = ids->next;
+//         }
+//         tmp = tmp->next;
+//     }
+
+//     return false;
+// }
 
 
-/*
- There is a separate instance of this function 
- for each connection.  It handles all communication
- once a connnection has been established.
-*/
-/*void Server::handle_communication (int sock)
-{
-    int n;
-    char buffer[sizeof(packet)];
+// /*
+//  There is a separate instance of this function 
+//  for each connection.  It handles all communication
+//  once a connnection has been established.
+// */
+// /*void Server::handle_communication (int sock)
+// {
+//     int n;
+//     char buffer[sizeof(packet)];
       
-    bzero(buffer, sizeof(packet));
-    n = read(sock, buffer, sizeof(packet));
+//     bzero(buffer, sizeof(packet));
+//     n = read(sock, buffer, sizeof(packet));
 
-    if (n < 0) 
-        error("ERROR reading from socket");
+//     if (n < 0) 
+//         error("ERROR reading from socket");
 
-    packet *pkt = (packet*)buffer;
+//     packet *pkt = (packet*)buffer;
         
-    printf("Here is the message: %s\n", pkt->message);
-    n = write(sock, buffer, sizeof(packet));
+//     printf("Here is the message: %s\n", pkt->message);
+//     n = write(sock, buffer, sizeof(packet));
 
-    if (n < 0)
-        error("ERROR writing to socket");
+//     if (n < 0)
+//         error("ERROR writing to socket");
 
-    close(sock);
-}*/
+//     close(sock);
+// }*/
 
-void * SendMessage(void * data) {
-    packet content = *(packet*) data;
-
-    sockets_id *ids = GetIDs(string(content.groupname));
-    while (ids != NULL) {
-        int current_id = ids->id;
-        cout << "Send to ID: " << current_id << endl;
+void SendMessage(packet content) {
+    for (int i = 0; i < MAX_CONNS; i++) {
+        if (groups[i] != content.groupname)
+            continue;
 
         mtx.lock();
-        int n = write(current_id, reinterpret_cast<char*>(&content), sizeof(packet));
+        int n = write(i, reinterpret_cast<char*>(&content), sizeof(packet));
         mtx.unlock();
 
-        ids = ids->next;
-
         if (n <= 0)
-            RemoveIdFromGroup(string(content.groupname), current_id);
+            groups[i].clear();
     }
 }
 
-void * ReceiveMessage(void * socket) {
-    int socket_fd, n;
-    socket_fd = *(int *) socket;
-
-    cerr << "socket_fd: " << socket_fd << endl;
-
-    while(true) {
+void ReceiveMessage(int socket_fd) {
+    while (true) {
         packet data, buffer;
         bzero(&buffer, sizeof(packet));
 
-        n = read(socket_fd, &buffer, sizeof(packet));
+        int n = read(socket_fd, &buffer, sizeof(packet));
         data = buffer;
 
-        cerr << "Packet size: " << n << endl;
-
-        if (n < 0) 
-            error("ERROR reading from socket");
-        else if (n == 0){
-            RemoveID(socket_fd);
+        if (n != sizeof(packet)) {
+            groups[socket_fd].clear();
             break;
         }
 
         if (strlen(data.groupname)) {
-            string groupname = string(data.groupname);
-            InsertGroup(groupname, socket_fd);
-
+            groups[socket_fd] = string(data.groupname);
             printf("%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
 
-            pthread_t tid;
-            pthread_create(&tid, NULL, SendMessage, (void *)&data);
+            std::thread write_message (SendMessage, data);
+            write_message.detach();
         }
     }
 }
@@ -261,9 +297,10 @@ int main(int argc, char *argv[])
     if (listen(sockfd, MAX_CONNS) != 0)
         error("ERROR on listening");
 
-    pthread_t tid[MAX_CONNS];
     int i = 0;
-    cout << "Server Started!" << endl;
+    std::cerr << "Server Started!" << endl;
+
+    std::thread tid[MAX_CONNS];
 
     while(true)
     {
@@ -273,14 +310,14 @@ int main(int argc, char *argv[])
         if (newsockfd < 0)
             error("ERROR on accept");
 
-        cout << "New connection" << endl;
+        std::cerr << "New connection" << endl;
 
-        pthread_create(&tid[i++], NULL, ReceiveMessage, (void *)&newsockfd);
+        tid[i++] = std::thread(ReceiveMessage, newsockfd);
 
         if (i >= MAX_CONNS) {
             i = 0;
             while (i < MAX_CONNS)
-                waitpid(tid[i++], NULL, 0);
+                tid[i++].join();
             i = 0;
         }
     }

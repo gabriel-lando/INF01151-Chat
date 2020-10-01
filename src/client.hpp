@@ -16,3 +16,14 @@ class Client
 
     private:
 };
+
+char GetChar();
+void SetCursorPosition(int x, int y);
+void SetTerminalSize(int x, int y);
+string ReadMessage();
+void ProcessPacket(packet *pkt);
+void WriteMessage(string message);
+char ProcessChar(char c, int * count);
+void WriteLine(int x, char c);
+void PrintLayout(string username, string group);
+void SendMessage(string message, string user, string group, int socket_id);

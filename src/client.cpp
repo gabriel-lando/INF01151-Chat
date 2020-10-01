@@ -1,15 +1,5 @@
 #include "client.hpp"
 
-char GetChar();
-void SetCursorPosition(int x, int y);
-void SetTerminalSize(int x, int y);
-string ReadMessage();
-void ProcessPacket(packet *pkt);
-void WriteMessage(string message);
-char ProcessChar(char c, int * count);
-void WriteLine(int x, char c);
-void PrintLayout(string username, string group);
-
 std::mutex mtx; //Used to avoid concurrency when write message to console
 
 string username;
@@ -90,20 +80,24 @@ int main(int argc, char *argv[])
 
     pthread_create(&receive_thread, NULL, receive, (void *) &sockfd);
 
+    SendMessage(string("<entrou no grupo>"), username, group_name, sockfd);
     while(true)
     {
         string message = ReadMessage();
-        packet pkt;
-        pkt.timestamp = get_time();
-        strcpy(pkt.groupname, group_name.c_str());
-        strcpy(pkt.username, username.c_str());
-        strcpy(pkt.message, message.c_str());
-
-        n = write(sockfd, reinterpret_cast<char*>(&pkt), sizeof(packet));
-        
-        if (n < 0)
-            error("ERROR writing to socket");
+        SendMessage(message, username, group_name, sockfd);
     }
+}
+
+void SendMessage(string message, string user, string group, int socket_id){
+    packet pkt;
+    pkt.timestamp = get_time();
+    strcpy(pkt.groupname, group.c_str());
+    strcpy(pkt.username, user.c_str());
+    strcpy(pkt.message, message.c_str());
+
+    int n = write(socket_id, reinterpret_cast<char*>(&pkt), sizeof(packet));
+    if (n < 0)
+        error("ERROR writing to socket");
 }
 
 string ReadMessage() {
