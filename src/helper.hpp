@@ -33,9 +33,8 @@ bool check_name(const string &name);
 time_t get_time();
 string get_timestamp(time_t time);
 
-typedef struct __packet{
+typedef struct __packet {
     time_t timestamp; //Timestamp do dado
-    uint16_t length; //Comprimento do payload
     char username[20]; //Nome do usuario
     char groupname[50]; //Nome do usuario
     char message[100]; //Dados da mensagem

@@ -1,6 +1,7 @@
 #include "helper.hpp"
 
-#define MAX_CONNS 1024
+#define MAX_CONNS 50
+#define CON_TIMEOUT 60 // 60 sec = 1 min
 
 class Server
 {
@@ -12,3 +13,6 @@ class Server
 
     private:
 };
+
+void SendMessage(packet pkt);
+void ReceiveMessage(int socket_fd);

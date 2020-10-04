@@ -3,34 +3,41 @@
 std::mutex mtx; //Used to avoid concurrency when write message to console
 
 string username;
+struct termios currt;
 int usernameLen = 0;
 int linePosition = 0;
+volatile int message_len = 0;
 
-int curs_pos = SCREEN_SIZE_X - 1;
+int curs_initial_pos = SCREEN_SIZE_X - 1;
 
 typedef struct {
     char* prompt;
     int socket;
 } thread_data;
 
+void error_and_reset(string msg)
+{
+    cerr << msg << endl;
+    tcsetattr(STDIN_FILENO, TCSANOW, &currt);
+    exit(0);
+}
 
-void * receive(void * sockfd) {
-    int socket_fd, response;
-    char buffer[sizeof(packet)];
-    socket_fd = *(int*)sockfd;
+void ReceiveMessage(int socket_fd) {
+    packet buffer;
 
     while(true) {
-        bzero(buffer, sizeof(packet));
-        response = recvfrom(socket_fd, buffer, sizeof(packet), 0, NULL, NULL);
-
+        bzero(&buffer, sizeof(packet));
+        int response = recvfrom(socket_fd, &buffer, sizeof(packet), 0, NULL, NULL);
+  
         if (response == -1)
-            error("Recv failed\n");
+            error_and_reset("Recv failed\n");
         else if (response == 0)
-            error("Peer disconnected\n");
-
-        packet *resp = (packet*)buffer;
+            error_and_reset("Peer disconnected\n");
         
-        ProcessPacket(resp);
+        if (response == sizeof(packet))
+            ProcessPacket(buffer);
+        else
+            error_and_reset("Connection Timeout.");
     }
 }
 
@@ -39,13 +46,15 @@ void * receive(void * sockfd) {
 int main(int argc, char *argv[])
 {
     int sockfd, portno, n;
-    pthread_t receive_thread;
 
     struct sockaddr_in serv_addr;
     struct hostent *server;
     struct in_addr addr;
 
-    /*string*/ username =  check_name(argv[1]) ? argv[1] : "invalid";
+    if (argc < 5 || argc > 6)
+        error("Use: " + string(argv[0]) + " username groupname server_ip server_port <n_messages>");
+
+    username =  check_name(argv[1]) ? argv[1] : "invalid";
     string group_name = check_name(argv[2]) ? argv[2] : "invalid";
     const char* server_ip = argv[3];
     const char* port = argv[4];
@@ -78,14 +87,17 @@ int main(int argc, char *argv[])
     
     PrintLayout(username, group_name);
 
-    pthread_create(&receive_thread, NULL, receive, (void *) &sockfd);
+    std::thread receive_thread (ReceiveMessage, sockfd);
+    receive_thread.detach();
 
-    SendMessage(string("<entrou no grupo>"), username, group_name, sockfd);
-    while(true)
-    {
+    SendMessage("", username, group_name, sockfd);
+
+    tcgetattr(STDIN_FILENO, &currt);
+    while(true) {
         string message = ReadMessage();
         SendMessage(message, username, group_name, sockfd);
     }
+    tcsetattr(STDIN_FILENO, TCSANOW, &currt);
 }
 
 void SendMessage(string message, string user, string group, int socket_id){
@@ -97,38 +109,38 @@ void SendMessage(string message, string user, string group, int socket_id){
 
     int n = write(socket_id, reinterpret_cast<char*>(&pkt), sizeof(packet));
     if (n < 0)
-        error("ERROR writing to socket");
+        error_and_reset("ERROR writing to socket");
 }
 
 string ReadMessage() {
 
     mtx.lock();
-    SetCursorPosition(usernameLen + 2, curs_pos);
+    SetCursorPosition(usernameLen + 2, curs_initial_pos);
     WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
-    SetCursorPosition(usernameLen + 2, curs_pos);
+    SetCursorPosition(usernameLen + 2, curs_initial_pos);
     mtx.unlock();
 
     int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1;
-    char *temp = (char*) calloc(msg_len * sizeof(char), sizeof(char));
-    int count = 0;
+    char *temp = (char*) calloc(msg_len * sizeof(char) + 1, msg_len * sizeof(char) + 1);
+    message_len = 0;
     char c;
-    // ToDo: add a function to set cursor to current position when a message is received
-    while((c = GetChar()) != '\n' && count < msg_len || count == 0){
-        c = ProcessChar(c, &count);
+
+    while((c = GetChar()) != '\n' && message_len < msg_len || message_len == 0){
+        c = ProcessChar(c);
         if (c > 0)
-            temp[count++] = c;
+            temp[message_len++] = c;
     }
-    temp[count] = '\0';
+    temp[message_len] = '\0';
 
     return string(temp);
 }
 
-void ProcessPacket(packet *pkt) {
-    string msguser = string(pkt->username);
+void ProcessPacket(packet pkt) {
+    string msguser = string(pkt.username);
     if (msguser == username)
         msguser = "voce";
     
-    string message = get_timestamp(pkt->timestamp) + " " + msguser + ": " + string(pkt->message);
+    string message = get_timestamp(pkt.timestamp) + " " + msguser + ": " + string(pkt.message);
 
     WriteMessage(message);
 }
@@ -142,18 +154,19 @@ void WriteMessage(string message){
     if (linePosition >= SCREEN_SIZE_X - 1){
         SetCursorPosition(0, SCREEN_SIZE_X - 1);
         WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
-        SetCursorPosition(0, curs_pos);
+        SetCursorPosition(0, curs_initial_pos);
         WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
-        curs_pos++;
+        curs_initial_pos++;
         linePosition--;
 
-        SetCursorPosition(0, curs_pos);
+        SetCursorPosition(0, curs_initial_pos);
         cerr << "\n" << username << ": ";
     }
 
-    SetCursorPosition(usernameLen + 2, curs_pos);
-    WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
-    SetCursorPosition(usernameLen + 2, curs_pos);
+    int cur_pos = usernameLen + 2 + message_len;
+    SetCursorPosition(cur_pos, curs_initial_pos);
+    WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
+    SetCursorPosition(cur_pos, curs_initial_pos);
 
     mtx.unlock();
 }
@@ -188,11 +201,12 @@ void WriteLine(int x, char c) {
         cerr << c;
 }
 
-char GetChar(void) {
+char GetChar() {
     int ch;
     struct termios oldt;
     struct termios newt;
-    tcgetattr(STDIN_FILENO, &oldt); 
+    tcgetattr(STDIN_FILENO, &oldt);
+    currt = oldt;
     newt = oldt; 
     newt.c_lflag &= ~(ICANON | ECHO); 
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
@@ -201,8 +215,9 @@ char GetChar(void) {
     return ch;
 }
 
-char ProcessChar(char c, int * count) {
-    if (c >= 32 && c <= 126) {
+char ProcessChar(unsigned char c) {
+    
+    if (c >= 32 && c < 255 && c != 127) {
         mtx.lock();
         cerr << c;
         mtx.unlock();
@@ -210,11 +225,11 @@ char ProcessChar(char c, int * count) {
         return c;
     }
 
-    if (c == 127 && *count > 0) {
+    if (c == 127 && message_len > 0) {
         mtx.lock();
         cerr << "\b \b"; // backspace space backspace
         mtx.unlock();
-        (*count)--;
+        (message_len)--;
     }
     
     return 0;
