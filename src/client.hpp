@@ -1,7 +1,7 @@
 #include "helper.hpp"
 
-#define SCREEN_SIZE_X 20
-#define SCREEN_SIZE_Y 50
+#define SCREEN_SIZE_X 24
+#define SCREEN_SIZE_Y 80
 
 class Client
 {
