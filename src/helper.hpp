@@ -1,3 +1,6 @@
+#ifndef __HELPER__
+#define __HELPER__
+
 // Headers
 #include <stdio.h>
 #include <sys/types.h>
@@ -39,3 +42,5 @@ typedef struct __packet {
     char groupname[50]; //Nome do usuario
     char message[100]; //Dados da mensagem
 } packet;
+
+#endif

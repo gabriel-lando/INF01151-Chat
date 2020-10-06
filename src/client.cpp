@@ -7,6 +7,8 @@ struct termios currt;
 int usernameLen = 0;
 int linePosition = 0;
 volatile int message_len = 0;
+volatile char current_msg[SCREEN_SIZE_Y] = { '\0' };
+volatile 
 
 int curs_initial_pos = SCREEN_SIZE_X - 1;
 
@@ -50,9 +52,15 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;
     struct hostent *server;
     struct in_addr addr;
+    string n_msgs = "0";
+
 
     if (argc < 5 || argc > 6)
         error("Use: " + string(argv[0]) + " username groupname server_ip server_port <n_messages>");
+
+    if (argc == 6) {
+        n_msgs = string(argv[5]);
+    }
 
     username =  check_name(argv[1]) ? argv[1] : "invalid";
     string group_name = check_name(argv[2]) ? argv[2] : "invalid";
@@ -90,7 +98,7 @@ int main(int argc, char *argv[])
     std::thread receive_thread (ReceiveMessage, sockfd);
     receive_thread.detach();
 
-    SendMessage("", username, group_name, sockfd);
+    SendMessage(n_msgs, username, group_name, sockfd);
 
     tcgetattr(STDIN_FILENO, &currt);
     while(true) {
@@ -121,18 +129,22 @@ string ReadMessage() {
     mtx.unlock();
 
     int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1;
-    char *temp = (char*) calloc(msg_len * sizeof(char) + 1, msg_len * sizeof(char) + 1);
+    
     message_len = 0;
-    char c;
+    unsigned char c, prev_c = 0;
+
+    current_msg[0] = '\0';
 
     while((c = GetChar()) != '\n' && message_len < msg_len || message_len == 0){
         c = ProcessChar(c);
-        if (c > 0)
-            temp[message_len++] = c;
+        if (c > 0) {
+            current_msg[message_len++] = c;
+            current_msg[message_len] = '\0';
+        }
     }
-    temp[message_len] = '\0';
+    //current_msg[message_len] = '\0';
 
-    return string(temp);
+    return string((char*)current_msg);
 }
 
 void ProcessPacket(packet pkt) {
@@ -148,22 +160,26 @@ void ProcessPacket(packet pkt) {
 void WriteMessage(string message){
     mtx.lock();
 
+    
     SetCursorPosition(0, linePosition++);
     cerr << message;
 
+    if (message.length() > SCREEN_SIZE_Y)
+        linePosition++;
+
+    int cur_pos = usernameLen + 2 + message_len;
     if (linePosition >= SCREEN_SIZE_X - 1){
         SetCursorPosition(0, SCREEN_SIZE_X - 1);
-        WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
+        WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
         SetCursorPosition(0, curs_initial_pos);
-        WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
+        WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
         curs_initial_pos++;
         linePosition--;
 
         SetCursorPosition(0, curs_initial_pos);
-        cerr << "\n" << username << ": ";
+        fprintf(stderr, "\n%s: %s", username.c_str(), current_msg);
     }
 
-    int cur_pos = usernameLen + 2 + message_len;
     SetCursorPosition(cur_pos, curs_initial_pos);
     WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
     SetCursorPosition(cur_pos, curs_initial_pos);
@@ -178,11 +194,11 @@ void PrintLayout(string username, string group){
     system("clear");
     SetCursorPosition(0, 0);
 
-    cerr << "GRUPO: " << group << endl;
+    fprintf(stderr, "GRUPO: %s\n", group.c_str());
     WriteLine(SCREEN_SIZE_Y, '-');
 
     SetCursorPosition(0, SCREEN_SIZE_X - 1);
-    cerr << username << ": ";
+    fprintf(stderr, "%s: ", username.c_str());
 
     linePosition = 2;
     mtx.unlock();
@@ -217,7 +233,7 @@ char GetChar() {
 
 char ProcessChar(unsigned char c) {
     
-    if (c >= 32 && c < 255 && c != 127) {
+    if (c >= 32 && c < 127 /*255 && c != 127*/) {
         mtx.lock();
         cerr << c;
         mtx.unlock();

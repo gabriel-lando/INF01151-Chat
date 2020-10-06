@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "io.c"
 
 std::mutex data_mtx, socket_mtx;
 
@@ -131,18 +132,53 @@ void CheckConnectionTimeout() {
     }
 }
 
+int WriteToSocket(packet pkt, int socket_id) {
+    
+    int n = write(socket_id, reinterpret_cast<char*>(&pkt), sizeof(packet));
+    
+    return n;
+}
+
+void LoadUserMessages(packet pkt, int socket_id) {
+
+    int qty = atoi(pkt.message);
+    if (!qty)
+        return;
+
+    string group = pkt.groupname;
+    packet *response = (packet *)malloc(sizeof(packet) * qty);
+
+    int read = LoadMessages(group, qty, response);
+
+    if (!read)
+        return;
+    
+    socket_mtx.lock();
+    for (int i = 0; i < read; i++)
+        WriteToSocket(response[i], socket_id);
+    socket_mtx.unlock();
+
+    return;
+}
+
 void SendMessage(packet pkt) {
+
+    if(!SaveMessage(pkt)) {
+        fprintf(stderr, "Error saving message\n");
+        return;
+    }
+        
+
+    socket_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++) {
         if (clients[i].free || strcmp((char*)clients[i].group, pkt.groupname))
             continue;
 
-        socket_mtx.lock();
-        int n = write(clients[i].socket_id, reinterpret_cast<char*>(&pkt), sizeof(packet));
-        socket_mtx.unlock();
-
+        int n = WriteToSocket(pkt, clients[i].socket_id);
         if (n <= 0)
             ReleaseConnection(i);
     }
+    socket_mtx.unlock();
 }
 
 void ReceiveMessage(int socket_fd) {
@@ -162,7 +198,11 @@ void ReceiveMessage(int socket_fd) {
         int idx = FindUserIdx(socket_fd);
         if (idx == -1) {
             idx = AddNewUser(data, socket_fd, &was_connected);
-            strcpy(data.message, "<entrou no grupo>");
+
+            if (idx != -1) {
+                LoadUserMessages(data, socket_fd);
+                strcpy(data.message, "<entrou no grupo>");
+            }
         }
 
         if (idx != -1) {
