@@ -38,8 +38,8 @@ string get_timestamp(time_t time);
 
 typedef struct __packet {
     time_t timestamp; //Timestamp do dado
-    char username[20]; //Nome do usuario
-    char groupname[50]; //Nome do usuario
+    char username[21]; //Nome do usuario
+    char groupname[21]; //Nome do grupo
     char message[100]; //Dados da mensagem
 } packet;
 

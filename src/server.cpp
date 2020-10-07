@@ -12,6 +12,7 @@ typedef struct {
 } str_clients;
 
 volatile str_clients clients[MAX_CONNS];
+int qtde_msgs = 0;
 
 void InitClients(){
     data_mtx.lock();
@@ -43,16 +44,24 @@ int AddNewUser(packet pkt, int socket_id, bool *connected) {
     // Check if user is already connected
     int count = 0;
     for (int i = 0; i < MAX_CONNS; i++) {
-        if (!clients[i].free && !strcmp((char*)clients[i].user, pkt.username))
+        if (!clients[i].free && !strcmp((char*)clients[i].user, pkt.username)){
             count++;
+            if (!strcmp((char*)clients[i].group, pkt.groupname))
+                *connected = true;
+        }
     }
 
-    if (count >= 2)
+    if (count >= MAX_SIM_USR)
         return -1;
     
+    data_mtx.lock();
     int idx = GetFreeClient();
 
-    data_mtx.lock();
+    if (idx == -1){
+        data_mtx.unlock();
+        return -1;
+    }
+
     clients[idx].free = false;
     clients[idx].socket_id = socket_id;
     clients[idx].last_msg = pkt.timestamp;
@@ -60,7 +69,6 @@ int AddNewUser(packet pkt, int socket_id, bool *connected) {
     strcpy((char*)clients[idx].user, pkt.username);
     data_mtx.unlock();
 
-    *connected = count;
     return idx;
 }
 
@@ -141,14 +149,13 @@ int WriteToSocket(packet pkt, int socket_id) {
 
 void LoadUserMessages(packet pkt, int socket_id) {
 
-    int qty = atoi(pkt.message);
-    if (!qty)
+    if (!qtde_msgs)
         return;
 
     string group = pkt.groupname;
-    packet *response = (packet *)malloc(sizeof(packet) * qty);
+    packet *response = (packet *)malloc(sizeof(packet) * qtde_msgs);
 
-    int read = LoadMessages(group, qty, response);
+    int read = LoadMessages(group, qtde_msgs, response);
 
     if (!read)
         return;
@@ -167,7 +174,6 @@ void SendMessage(packet pkt) {
         fprintf(stderr, "Error saving message\n");
         return;
     }
-        
 
     socket_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++) {
@@ -175,7 +181,7 @@ void SendMessage(packet pkt) {
             continue;
 
         int n = WriteToSocket(pkt, clients[i].socket_id);
-        if (n <= 0)
+        if (n != sizeof(packet))
             ReleaseConnection(i);
     }
     socket_mtx.unlock();
@@ -219,7 +225,7 @@ void ReceiveMessage(int socket_fd) {
             strcpy(data.username, "SERVER");
 
             socket_mtx.lock();
-            int n = write(socket_fd, reinterpret_cast<char*>(&data), sizeof(packet));
+            int n = WriteToSocket(data, socket_fd);
             socket_mtx.unlock();
 
             ReleaseConnectionByID(socket_fd);
@@ -252,8 +258,11 @@ int main(int argc, char *argv[])
     // n contains number of characteres read or written
     int n;
 
-    if (argc < 2)
-        error("No port provided");
+    if (argc < 2 || argc > 3)
+        error("Use: <port> <N>");
+    
+    if (argc == 3)
+        qtde_msgs = atoi(argv[2]);
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 

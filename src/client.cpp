@@ -52,15 +52,10 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;
     struct hostent *server;
     struct in_addr addr;
-    string n_msgs = "0";
 
 
-    if (argc < 5 || argc > 6)
-        error("Use: " + string(argv[0]) + " username groupname server_ip server_port <n_messages>");
-
-    if (argc == 6) {
-        n_msgs = string(argv[5]);
-    }
+    if (argc != 5)
+        error("Use: " + string(argv[0]) + " <username> <groupname> <server_ip> <server_port>");
 
     username =  check_name(argv[1]) ? argv[1] : "invalid";
     string group_name = check_name(argv[2]) ? argv[2] : "invalid";
@@ -98,7 +93,7 @@ int main(int argc, char *argv[])
     std::thread receive_thread (ReceiveMessage, sockfd);
     receive_thread.detach();
 
-    SendMessage(n_msgs, username, group_name, sockfd);
+    SendMessage("", username, group_name, sockfd);
 
     tcgetattr(STDIN_FILENO, &currt);
     while(true) {
@@ -128,7 +123,7 @@ string ReadMessage() {
     SetCursorPosition(usernameLen + 2, curs_initial_pos);
     mtx.unlock();
 
-    int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1;
+    int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1 - 9;
     
     message_len = 0;
     unsigned char c, prev_c = 0;
@@ -142,7 +137,7 @@ string ReadMessage() {
             current_msg[message_len] = '\0';
         }
     }
-    //current_msg[message_len] = '\0';
+    current_msg[message_len] = '\0';
 
     return string((char*)current_msg);
 }
@@ -160,7 +155,6 @@ void ProcessPacket(packet pkt) {
 void WriteMessage(string message){
     mtx.lock();
 
-    
     SetCursorPosition(0, linePosition++);
     cerr << message;
 

@@ -1,7 +1,8 @@
 #include "helper.hpp"
 
+#define MAX_SIM_USR 2   // Max simultaneous users
 #define MAX_CONNS 50
-#define CON_TIMEOUT 60 // 60 sec = 1 min
+#define CON_TIMEOUT 60  // 60 sec = 1 min
 
 class Server
 {
