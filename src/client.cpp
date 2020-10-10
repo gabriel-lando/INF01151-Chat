@@ -3,6 +3,8 @@
 std::mutex mtx; //Used to avoid concurrency when write message to console
 
 string username;
+string group_name;
+
 struct termios currt;
 int usernameLen = 0;
 int linePosition = 0;
@@ -18,6 +20,11 @@ typedef struct
     int socket;
 } thread_data;
 
+/**
+ * Funcion used to terminate the application and log the errors
+ * @param msg output message
+ */
+
 void error_and_reset(string msg)
 {
     cerr << msg << endl;
@@ -25,7 +32,12 @@ void error_and_reset(string msg)
     exit(0);
 }
 
-void ReceiveMessage(int socket_fd)
+/**
+ * Loop started by a thread for the client to receive messages from others 
+ * @param socket_fd file descriptor, will store values returned by socket system call
+ */
+
+void receive_message(int socket_fd)
 {
     packet buffer;
 
@@ -39,15 +51,22 @@ void ReceiveMessage(int socket_fd)
         else if (response == 0)
             error_and_reset("Peer disconnected\n");
 
+        /* Success receiving a message */
         if (response == sizeof(packet))
-            ProcessPacket(buffer);
+            process_packet(buffer);
         else
             error_and_reset("Connection Timeout.");
     }
 }
 
-// The user should establish the connection to the server with the following parameters:
-// <username> <groupname> <server_ip_address> <port>
+/**
+ * Client main loop
+ * 
+ * The user should establish the connection to the server with the following parameters:
+ * <username> <groupname> <server_ip_address> <port>
+ * @param socket_fd file descriptor, will store values returned by socket system call
+ */
+
 int main(int argc, char *argv[])
 {
     int sockfd, portno, n;
@@ -59,8 +78,10 @@ int main(int argc, char *argv[])
     if (argc != 5)
         error("Use: " + string(argv[0]) + " <username> <groupname> <server_ip> <server_port>");
 
+    /* username and group_name name validations */
     username = check_name(argv[1]) ? argv[1] : "invalid";
-    string group_name = check_name(argv[2]) ? argv[2] : "invalid";
+    group_name = check_name(argv[2]) ? argv[2] : "invalid";
+
     const char *server_ip = argv[3];
     const char *port = argv[4];
 
@@ -90,28 +111,42 @@ int main(int argc, char *argv[])
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         error("ERROR connecting");
 
-    PrintLayout(username, group_name);
+    /* Client connected successfully, call print_layout to configure user interface on the terminal */
+    print_layout();
 
-    std::thread receive_thread(ReceiveMessage, sockfd);
+    /* Thread to receive messages on that client */
+    std::thread receive_thread(receive_message, sockfd);
     receive_thread.detach();
 
-    SendMessage("", username, group_name, sockfd);
+    send_message("", sockfd);
 
     tcgetattr(STDIN_FILENO, &currt);
+
     while (true)
     {
-        string message = ReadMessage();
-        SendMessage(message, username, group_name, sockfd);
+        string message = read_message();
+        send_message(message, sockfd);
     }
     tcsetattr(STDIN_FILENO, TCSANOW, &currt);
 }
 
-void SendMessage(string message, string user, string group, int socket_id)
+/****************************************************************************
+ *  Console-related functions
+ ***************************************************************************/
+
+
+/**
+ * Function to write the message on the socket_id, shared by client and server
+ * 
+ * @param message the message that should be written
+ * @param socket_id socket identifier
+ */
+void send_message(string message, int socket_id)
 {
     packet pkt;
     pkt.timestamp = get_time();
-    strcpy(pkt.groupname, group.c_str());
-    strcpy(pkt.username, user.c_str());
+    strcpy(pkt.groupname, group_name.c_str());
+    strcpy(pkt.username, username.c_str());
     strcpy(pkt.message, message.c_str());
 
     int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
@@ -119,13 +154,18 @@ void SendMessage(string message, string user, string group, int socket_id)
         error_and_reset("ERROR writing to socket");
 }
 
-string ReadMessage()
+/**
+ * Function used to retrieve the message that the client wrote on the user interface terminal
+ */
+string read_message()
 {
-
+    /* A mutex should be used here to avoid having the cursor setted on a wrong position
+       This could happen, for example, if we are setting the cursor to a new position and the client receives a message
+     */
     mtx.lock();
-    SetCursorPosition(usernameLen + 2, curs_initial_pos);
-    WriteLine(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
-    SetCursorPosition(usernameLen + 2, curs_initial_pos);
+    set_cursor_position(usernameLen + 2, curs_initial_pos);
+    write_line(SCREEN_SIZE_Y - (usernameLen + 2), ' ');
+    set_cursor_position(usernameLen + 2, curs_initial_pos);
     mtx.unlock();
 
     int msg_len = SCREEN_SIZE_Y - (usernameLen + 2) - 1 - 9;
@@ -135,9 +175,9 @@ string ReadMessage()
 
     current_msg[0] = '\0';
 
-    while ((c = GetChar()) != '\n' && message_len < msg_len || message_len == 0)
+    while ((c = get_char()) != '\n' && message_len < msg_len || message_len == 0)
     {
-        c = ProcessChar(c);
+        c = process_char(c);
         if (c > 0)
         {
             current_msg[message_len++] = c;
@@ -149,7 +189,13 @@ string ReadMessage()
     return string((char *)current_msg);
 }
 
-void ProcessPacket(packet pkt)
+
+/**
+ * Receives the message and formats to display it with the timestamp and the user on console
+ * 
+ * @param pkt Struct that defines the messages sent by clients
+ */
+void process_packet(packet pkt)
 {
     string msguser = string(pkt.username);
     if (msguser == username)
@@ -157,14 +203,19 @@ void ProcessPacket(packet pkt)
 
     string message = get_timestamp(pkt.timestamp) + " " + msguser + ": " + string(pkt.message);
 
-    WriteMessage(message);
+    write_message(message);
 }
 
-void WriteMessage(string message)
+/**
+ * Receives the message and formats to display it with the timestamp and the user on console
+ *  This function should use a mutex to avoid that the cursor goes to a wrong position on the console
+ * @param message string message already organized in the right format to be written on console
+ */
+void write_message(string message)
 {
     mtx.lock();
 
-    SetCursorPosition(0, linePosition++);
+    set_cursor_position(0, linePosition++);
     cerr << message;
 
     if (message.length() > SCREEN_SIZE_Y)
@@ -173,59 +224,67 @@ void WriteMessage(string message)
     int cur_pos = usernameLen + 2 + message_len;
     if (linePosition >= SCREEN_SIZE_X - 1)
     {
-        SetCursorPosition(0, SCREEN_SIZE_X - 1);
-        WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
-        SetCursorPosition(0, curs_initial_pos);
-        WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
+        set_cursor_position(0, SCREEN_SIZE_X - 1);
+        write_line(SCREEN_SIZE_Y - cur_pos, ' ');
+        set_cursor_position(0, curs_initial_pos);
+        write_line(SCREEN_SIZE_Y - cur_pos, ' ');
         curs_initial_pos++;
         linePosition--;
 
-        SetCursorPosition(0, curs_initial_pos);
+        set_cursor_position(0, curs_initial_pos);
         fprintf(stderr, "\n%s: %s", username.c_str(), current_msg);
     }
 
-    SetCursorPosition(cur_pos, curs_initial_pos);
-    WriteLine(SCREEN_SIZE_Y - cur_pos, ' ');
-    SetCursorPosition(cur_pos, curs_initial_pos);
+    set_cursor_position(cur_pos, curs_initial_pos);
+    write_line(SCREEN_SIZE_Y - cur_pos, ' ');
+    set_cursor_position(cur_pos, curs_initial_pos);
 
     mtx.unlock();
 }
 
-void PrintLayout(string username, string group)
+/**
+ * Function called when the client successfully connects to the server
+ * Starts the console interface showing the group and user
+ * This function should use a mutex to avoid that the cursor goes to a wrong position on the console
+ * @param message string message already organized in the right format to be written on console
+ */
+void print_layout()
 {
     mtx.lock();
 
-    SetTerminalSize(SCREEN_SIZE_X, SCREEN_SIZE_Y);
+    set_terminal_size(SCREEN_SIZE_X, SCREEN_SIZE_Y);
     system("clear");
-    SetCursorPosition(0, 0);
+    set_cursor_position(0, 0);
 
-    fprintf(stderr, "GRUPO: %s\n", group.c_str());
-    WriteLine(SCREEN_SIZE_Y, '-');
+    fprintf(stderr, "GRUPO: %s\n", group_name.c_str());
+    write_line(SCREEN_SIZE_Y, '-');
 
-    SetCursorPosition(0, SCREEN_SIZE_X - 1);
+    set_cursor_position(0, SCREEN_SIZE_X - 1);
     fprintf(stderr, "%s: ", username.c_str());
 
     linePosition = 2;
     mtx.unlock();
 }
 
-void SetCursorPosition(int x, int y)
+
+void set_cursor_position(int x, int y)
 {
     fprintf(stderr, "\033[%d;%dH", y + 1, x + 1);
 }
 
-void SetTerminalSize(int x, int y)
+
+void set_terminal_size(int x, int y)
 {
     fprintf(stderr, "\e[8;%d;%dt", x, y);
 }
 
-void WriteLine(int x, char c)
+void write_line(int x, char c)
 {
     for (int i = 0; i < x; i++)
         cerr << c;
 }
 
-char GetChar()
+char get_char()
 {
     int ch;
     struct termios oldt;
@@ -240,7 +299,7 @@ char GetChar()
     return ch;
 }
 
-char ProcessChar(unsigned char c)
+char process_char(unsigned char c)
 {
 
     if (c >= 32 && c < 127 /*255 && c != 127*/)

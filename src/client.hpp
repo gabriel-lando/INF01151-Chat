@@ -17,13 +17,13 @@ public:
 private:
 };
 
-char GetChar();
-void SetCursorPosition(int x, int y);
-void SetTerminalSize(int x, int y);
-string ReadMessage();
-void ProcessPacket(packet pkt);
-void WriteMessage(string message);
-char ProcessChar(unsigned char c);
-void WriteLine(int x, char c);
-void PrintLayout(string username, string group);
-void SendMessage(string message, string user, string group, int socket_id);
+char get_char();
+void set_cursor_position(int x, int y);
+void set_terminal_size(int x, int y);
+string read_message();
+void process_packet(packet pkt);
+void write_message(string message);
+char process_char(unsigned char c);
+void write_line(int x, char c);
+void print_layout();
+void send_message(string message, int socket_id);
