@@ -36,12 +36,16 @@ bool check_name(const string &name);
 time_t get_time();
 string get_timestamp(time_t time);
 
+
+/**
+ * Struct containing the format of the messages
+ */
 typedef struct __packet
 {
-    time_t timestamp;   //Timestamp do dado
-    char username[21];  //Nome do usuario
-    char groupname[21]; //Nome do grupo
-    char message[100];  //Dados da mensagem
+    time_t timestamp;   // Data timestamp
+    char username[21];  // Username
+    char groupname[21]; // Group Name
+    char message[100];  // Message data
 } packet;
 
 #endif

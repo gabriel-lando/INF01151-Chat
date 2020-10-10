@@ -6,6 +6,12 @@ void error(string msg)
     exit(0);
 }
 
+/**
+ * Function to validate group name and user name
+ * They should have > 4 and < 20 characteres, start with letter and have only letters, numbers and dot (.)
+ * @param name string to be validated
+ */
+
 bool check_name(const string &name)
 {
     if (!((name[0] <= 'z' && name[0] >= 'a') || (name[0] <= 'Z' && name[0] >= 'A')) || name.length() > 20 || name.length() < 4)

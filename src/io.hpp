@@ -1,4 +1,4 @@
 #include "helper.hpp"
 
-int LoadMessages(string group, int qty, packet *response);
-bool SaveMessage(packet pkt);
+int load_messages(string group, int qty, packet *response);
+bool save_message(packet pkt);

@@ -10,10 +10,8 @@ class Server
 public:
     int port;
 
-    void handle_communication(int sock);
-
 private:
 };
 
-void SendMessage(packet pkt);
-void ReceiveMessage(int socket_fd);
+void send_message(packet pkt);
+void receive_message(int socket_fd);

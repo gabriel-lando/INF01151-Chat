@@ -64,7 +64,6 @@ void receive_message(int socket_fd)
  * 
  * The user should establish the connection to the server with the following parameters:
  * <username> <groupname> <server_ip_address> <port>
- * @param socket_fd file descriptor, will store values returned by socket system call
  */
 
 int main(int argc, char *argv[])
@@ -118,6 +117,7 @@ int main(int argc, char *argv[])
     std::thread receive_thread(receive_message, sockfd);
     receive_thread.detach();
 
+    /* When a client connects, it sends an empty message to the server */
     send_message("", sockfd);
 
     tcgetattr(STDIN_FILENO, &currt);

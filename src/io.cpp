@@ -2,7 +2,16 @@
 
 std::mutex io_mtx;
 
-int LoadMessages(string group, int qty, packet *response)
+/**
+ * Function used to load messages from a specific group
+ * While this function is accessing the binary file with the messages, a mutex locks the section code to avoid another
+ * functions acessing this resource
+ * 
+ * @param group the client group
+ * @param qty the number of messages that will be retrieved
+ * @param response response
+ */
+int load_messages(string group, int qty, packet *response)
 {
     FILE *in;
     string file = "data/" + group + ".bin";
@@ -24,14 +33,22 @@ int LoadMessages(string group, int qty, packet *response)
     }
 
     fseek(in, -seek, SEEK_END);
-    int read = fread(response, seek, 1, in);
+    fread(response, seek, 1, in);
     fclose(in);
 
     io_mtx.unlock();
     return (seek / sizeof(packet));
 }
 
-bool SaveMessage(packet pkt)
+/**
+ * Function used to save a single message pkt into a binary file from a specific group
+ * While this function is accessing the binary file with the messages, a mutex locks the section code to avoid another
+ * functions acessing this resource
+ * 
+ * @param pkt Struct that defines the messages sent by clients
+ */
+
+bool save_message(packet pkt)
 {
     string file = "data/" + string(pkt.groupname) + ".bin";
 

@@ -1,6 +1,6 @@
 # Compiler options 
 CC := g++ -std=c++17
-CFLAGS = -g -Wall -Wextra
+CFLAGS = -g -Wall -Wextra -Werror
 LIB := -pthread
 INC := -I include
 
