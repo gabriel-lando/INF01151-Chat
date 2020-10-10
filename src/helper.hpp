@@ -30,17 +30,18 @@ using namespace std;
 #define DEFAULT_PORT 6555
 #define DEFAULT_HOSTNAME "localhost"
 
-// functions 
+// functions
 void error(string msg);
 bool check_name(const string &name);
 time_t get_time();
 string get_timestamp(time_t time);
 
-typedef struct __packet {
-    time_t timestamp; //Timestamp do dado
-    char username[21]; //Nome do usuario
+typedef struct __packet
+{
+    time_t timestamp;   //Timestamp do dado
+    char username[21];  //Nome do usuario
     char groupname[21]; //Nome do grupo
-    char message[100]; //Dados da mensagem
+    char message[100];  //Dados da mensagem
 } packet;
 
 #endif

@@ -5,16 +5,16 @@
 
 class Client
 {
-    public:
+public:
     Client(string username, string group_name, string server_ip, string port);
     ~Client();
 
     string username;
     string group_name;
-    const char* server_ip;
+    const char *server_ip;
     int port;
 
-    private:
+private:
 };
 
 char GetChar();

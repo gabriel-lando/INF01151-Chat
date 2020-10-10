@@ -2,7 +2,8 @@
 
 std::mutex data_mtx, socket_mtx;
 
-typedef struct {
+typedef struct
+{
     bool free;
     int socket_id;
     time_t last_msg;
@@ -13,50 +14,58 @@ typedef struct {
 volatile str_clients clients[MAX_CONNS];
 int qtde_msgs = 0;
 
-void InitClients(){
+void InitClients()
+{
     data_mtx.lock();
-    for (int i = 0; i < MAX_CONNS; i++){
+    for (int i = 0; i < MAX_CONNS; i++)
+    {
         clients[i].free = true;
         clients[i].socket_id = 0;
         clients[i].last_msg = 0;
-        strcpy((char*)clients[i].group, "");
-        strcpy((char*)clients[i].user, "");
+        strcpy((char *)clients[i].group, "");
+        strcpy((char *)clients[i].user, "");
     }
     data_mtx.unlock();
 }
 
-int GetFreeClient(){
+int GetFreeClient()
+{
     for (int i = 0; i < MAX_CONNS; i++)
         if (clients[i].free)
             return i;
     return -1;
 }
 
-int FindUserIdx(int socket_id) {
+int FindUserIdx(int socket_id)
+{
     for (int i = 0; i < MAX_CONNS; i++)
         if (!clients[i].free && clients[i].socket_id == socket_id)
             return i;
     return -1;
 }
 
-int AddNewUser(packet pkt, int socket_id, bool *connected) {
+int AddNewUser(packet pkt, int socket_id, bool *connected)
+{
     // Check if user is already connected
     int count = 0;
-    for (int i = 0; i < MAX_CONNS; i++) {
-        if (!clients[i].free && !strcmp((char*)clients[i].user, pkt.username)){
+    for (int i = 0; i < MAX_CONNS; i++)
+    {
+        if (!clients[i].free && !strcmp((char *)clients[i].user, pkt.username))
+        {
             count++;
-            if (!strcmp((char*)clients[i].group, pkt.groupname))
+            if (!strcmp((char *)clients[i].group, pkt.groupname))
                 *connected = true;
         }
     }
 
     if (count >= MAX_SIM_USR)
         return -1;
-    
+
     data_mtx.lock();
     int idx = GetFreeClient();
 
-    if (idx == -1){
+    if (idx == -1)
+    {
         data_mtx.unlock();
         return -1;
     }
@@ -64,19 +73,21 @@ int AddNewUser(packet pkt, int socket_id, bool *connected) {
     clients[idx].free = false;
     clients[idx].socket_id = socket_id;
     clients[idx].last_msg = pkt.timestamp;
-    strcpy((char*)clients[idx].group, pkt.groupname);
-    strcpy((char*)clients[idx].user, pkt.username);
+    strcpy((char *)clients[idx].group, pkt.groupname);
+    strcpy((char *)clients[idx].user, pkt.username);
     data_mtx.unlock();
 
     return idx;
 }
 
-void WarnUsersFromDisconnection(string user, string group) {
+void WarnUsersFromDisconnection(string user, string group)
+{
 
     // Check if exists another connection from this user in this group
-    for (int i = 0; i < MAX_CONNS; i++) {
+    for (int i = 0; i < MAX_CONNS; i++)
+    {
         if (!clients[i].free)
-            if (!strcmp((char*)clients[i].user, user.c_str()) && !strcmp((char*)clients[i].group, group.c_str()))
+            if (!strcmp((char *)clients[i].user, user.c_str()) && !strcmp((char *)clients[i].group, group.c_str()))
                 return;
     }
 
@@ -86,25 +97,27 @@ void WarnUsersFromDisconnection(string user, string group) {
 
     strcpy(pkt.groupname, group.c_str());
     strcpy(pkt.username, user.c_str());
-    pkt.timestamp = get_time();  
+    pkt.timestamp = get_time();
 
-    std::thread write_message (SendMessage, pkt);
+    std::thread write_message(SendMessage, pkt);
     write_message.detach();
 }
 
-void ReleaseConnection(int index){
+void ReleaseConnection(int index)
+{
     close(clients[index].socket_id);
 
     data_mtx.lock();
-    string user = (char*)clients[index].user;
-    string group = (char*)clients[index].group;
+    string user = (char *)clients[index].user;
+    string group = (char *)clients[index].group;
     clients[index].free = true;
     data_mtx.unlock();
 
     WarnUsersFromDisconnection(user, group);
 }
 
-void ReleaseConnectionByID(int socket_id){
+void ReleaseConnectionByID(int socket_id)
+{
     int idx = FindUserIdx(socket_id);
     if (idx != -1)
         ReleaseConnection(idx);
@@ -112,20 +125,25 @@ void ReleaseConnectionByID(int socket_id){
         close(socket_id);
 }
 
-void UpdateUserConnection(packet pkt, int idx) {
+void UpdateUserConnection(packet pkt, int idx)
+{
     data_mtx.lock();
     clients[idx].last_msg = pkt.timestamp;
     data_mtx.unlock();
 }
 
-void CheckConnectionTimeout() {
-    while (true) {
+void CheckConnectionTimeout()
+{
+    while (true)
+    {
         time_t curr_time = get_time();
 
-        for (int i = 0; i < MAX_CONNS; i++) {
+        for (int i = 0; i < MAX_CONNS; i++)
+        {
             if (clients[i].free)
                 continue;
-            if (curr_time - clients[i].last_msg > CON_TIMEOUT){
+            if (curr_time - clients[i].last_msg > CON_TIMEOUT)
+            {
                 fprintf(stderr, "Client %s [ID %d] timed out.\n", clients[i].user, clients[i].socket_id);
                 socket_mtx.lock();
                 char c = '\0';
@@ -139,14 +157,16 @@ void CheckConnectionTimeout() {
     }
 }
 
-int WriteToSocket(packet pkt, int socket_id) {
-    
-    int n = write(socket_id, reinterpret_cast<char*>(&pkt), sizeof(packet));
-    
+int WriteToSocket(packet pkt, int socket_id)
+{
+
+    int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
+
     return n;
 }
 
-void LoadUserMessages(packet pkt, int socket_id) {
+void LoadUserMessages(packet pkt, int socket_id)
+{
 
     if (!qtde_msgs)
         return;
@@ -158,7 +178,7 @@ void LoadUserMessages(packet pkt, int socket_id) {
 
     if (!read)
         return;
-    
+
     socket_mtx.lock();
     for (int i = 0; i < read; i++)
         WriteToSocket(response[i], socket_id);
@@ -167,16 +187,19 @@ void LoadUserMessages(packet pkt, int socket_id) {
     return;
 }
 
-void SendMessage(packet pkt) {
+void SendMessage(packet pkt)
+{
 
-    if(!SaveMessage(pkt)) {
+    if (!SaveMessage(pkt))
+    {
         fprintf(stderr, "Error saving message\n");
         return;
     }
 
     socket_mtx.lock();
-    for (int i = 0; i < MAX_CONNS; i++) {
-        if (clients[i].free || strcmp((char*)clients[i].group, pkt.groupname))
+    for (int i = 0; i < MAX_CONNS; i++)
+    {
+        if (clients[i].free || strcmp((char *)clients[i].group, pkt.groupname))
             continue;
 
         int n = WriteToSocket(pkt, clients[i].socket_id);
@@ -186,40 +209,48 @@ void SendMessage(packet pkt) {
     socket_mtx.unlock();
 }
 
-void ReceiveMessage(int socket_fd) {
-    while (true) {
+void ReceiveMessage(int socket_fd)
+{
+    while (true)
+    {
         packet data, buffer;
         bzero(&buffer, sizeof(packet));
 
         int n = read(socket_fd, &buffer, sizeof(packet));
         data = buffer;
 
-        if (n != sizeof(packet)) {
+        if (n != sizeof(packet))
+        {
             ReleaseConnectionByID(socket_fd);
             break;
         }
 
         bool was_connected = false;
         int idx = FindUserIdx(socket_fd);
-        if (idx == -1) {
+        if (idx == -1)
+        {
             idx = AddNewUser(data, socket_fd, &was_connected);
 
-            if (idx != -1) {
+            if (idx != -1)
+            {
                 LoadUserMessages(data, socket_fd);
                 strcpy(data.message, "<entrou no grupo>");
             }
         }
 
-        if (idx != -1) {
+        if (idx != -1)
+        {
             UpdateUserConnection(data, idx);
 
-            if(!was_connected) {
+            if (!was_connected)
+            {
                 fprintf(stderr, "%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
-                std::thread write_message (SendMessage, data);
+                std::thread write_message(SendMessage, data);
                 write_message.detach();
             }
         }
-        else {
+        else
+        {
             strcpy(data.message, "Connection Error");
             strcpy(data.username, "SERVER");
 
@@ -234,8 +265,8 @@ void ReceiveMessage(int socket_fd) {
 }
 
 int main(int argc, char *argv[])
-{   
-    //Server *server = new Server(); 
+{
+    //Server *server = new Server();
 
     // Clear data structures to avoid memory trash
     InitClients();
@@ -259,23 +290,23 @@ int main(int argc, char *argv[])
 
     if (argc < 2 || argc > 3)
         error("Use: <port> <N>");
-    
+
     if (argc == 3)
         qtde_msgs = atoi(argv[2]);
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sockfd < 0)
-       error("ERROR opening socket");
+        error("ERROR opening socket");
 
     // sets all values in a buffer to zero.
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    bzero((char *)&serv_addr, sizeof(serv_addr));
     portno = atoi(argv[1]);
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(portno);
 
-    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         error("ERROR on binding");
 
     if (listen(sockfd, MAX_CONNS) != 0)
@@ -283,20 +314,20 @@ int main(int argc, char *argv[])
 
     std::cerr << "Server Started!" << endl;
 
-    thread timeout (CheckConnectionTimeout);
+    thread timeout(CheckConnectionTimeout);
     timeout.detach();
 
-    while(true)
+    while (true)
     {
         cli_len = sizeof(cli_addr);
-        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, (socklen_t*)(&cli_len));
-                
+        newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, (socklen_t *)(&cli_len));
+
         if (newsockfd < 0)
             error("ERROR on accept");
 
         std::cerr << "New connection" << endl;
 
-        thread receive_msg (ReceiveMessage, newsockfd);
+        thread receive_msg(ReceiveMessage, newsockfd);
         receive_msg.detach();
     }
 }
