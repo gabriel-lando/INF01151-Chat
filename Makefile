@@ -1,6 +1,6 @@
 # Compiler options 
 CC := g++ -std=c++17
-CFLAGS = -g -Wall -Wextra -Werror
+CFLAGS = -g -Wall -Wextra
 LIB := -pthread
 INC := -I include
 
@@ -23,7 +23,7 @@ CLIENTSRCS = $(addprefix $(SRCDIR)/, $(RAWCLIENTSRCS))
 RAWSERVERSRCS := server.cpp
 SERVERSRCS = $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
 ## Sources used by both
-RAWSRCS = helper.cpp
+RAWSRCS = helper.cpp io.cpp
 SRCS = $(addprefix $(SRCDIR)/, $(RAWSRCS))
 ## Object files
 RAWCLIENTOBJS := $(RAWCLIENTSRCS:%.cpp=%.o)

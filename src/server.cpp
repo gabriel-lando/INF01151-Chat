@@ -1,5 +1,4 @@
 #include "server.hpp"
-#include "io.c"
 
 std::mutex data_mtx, socket_mtx;
 
