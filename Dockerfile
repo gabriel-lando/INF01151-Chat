@@ -3,7 +3,7 @@ RUN apt-get update
 RUN apt-get -yq dist-upgrade
 
 # Install Dependencies
-RUN apt-get -yq install build-essential git
+RUN apt-get -yq install build-essential git net-tools
 
 # Clone Sisop 2 - Chat repository
 RUN git clone https://github.com/TMinuzzo/chat.git /chat
