@@ -1,10 +1,6 @@
 #include "helper.hpp"
 #include "io.hpp"
 
-#define MAX_SIM_USR 2  // Max simultaneous users
-#define MAX_CONNS 50   // Max client connections
-#define CON_TIMEOUT 60 // 60 sec = 1 min
-
 class Server
 {
 public:
@@ -12,6 +8,16 @@ public:
 
 private:
 };
+
+/* A struct used by the server to manage all the clients connected */
+typedef struct
+{
+    bool free;
+    int socket_id;
+    time_t last_msg;
+    char group[50];
+    char user[20];
+} str_clients;
 
 void send_message(packet pkt);
 void receive_message(int socket_fd);

@@ -29,6 +29,9 @@ using namespace std;
 // constants
 #define DEFAULT_PORT 6555
 #define DEFAULT_HOSTNAME "localhost"
+#define MAX_SIM_USR 2  // Max simultaneous users
+#define MAX_CONNS 50   // Max client connections
+#define CON_TIMEOUT 60 // 60 sec = 1 min
 
 // functions
 void error(string msg);
@@ -47,5 +50,11 @@ typedef struct __packet
     char groupname[21]; // Group Name
     char message[100];  // Message data
 } packet;
+
+typedef struct
+{
+    char ip[20];
+    int port;
+} server_info;
 
 #endif

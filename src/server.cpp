@@ -2,19 +2,8 @@
 
 std::mutex data_mtx, socket_mtx;
 
-/* A struct used by the server to manage all the clients connected */
-typedef struct
-{
-    bool free;
-    int socket_id;
-    time_t last_msg;
-    char group[50];
-    char user[20];
-} str_clients;
-
 volatile str_clients clients[MAX_CONNS];
 int qtde_msgs = 0;
-
 
 /**
  * Function to initialize the str_clients structure with default values
@@ -332,6 +321,39 @@ void receive_message(int socket_fd)
     }
 }
 
+int send_ip_to_front(char *front_ip, int front_port, server_info data)
+{
+    struct sockaddr_in serv_addr, cli_addr;
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sockfd < 0)
+        return -1;
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, front_ip, &serv_addr.sin_addr) <= 0)
+        return -1;
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(front_port);
+
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        return -1;
+
+    int n = write(sockfd, reinterpret_cast<void *>(&data), sizeof(server_info));
+    if (n != sizeof(server_info))
+        return -1;
+
+    bzero(&data, sizeof(server_info));
+    int response = recvfrom(sockfd, &data, sizeof(server_info), 0, NULL, NULL);
+    if (response == sizeof(server_info))
+        return 0;
+
+    close(sockfd);
+    return 1;
+}
+
 /**
  * Funtion with main loop of the server
  * The server should establish it's connection with the following parameters:
@@ -359,11 +381,18 @@ int main(int argc, char *argv[])
     // n contains number of characteres read or written
     int n;
 
-    if (argc < 2 || argc > 3)
-        error("Use: <port> <N>");
+    if (argc < 5 || argc > 6)
+        error("Use: <server_ip> <server_port> <front_ip> <front_port> <N>");
 
-    if (argc == 3)
-        qtde_msgs = atoi(argv[2]);
+    int front_ip = atoi(argv[4]);
+    server_info srv_info;
+    strcpy(srv_info.ip, argv[1]);
+    srv_info.port = atoi(argv[2]);
+    if (send_ip_to_front(argv[3], front_ip, srv_info) <= 0)
+        error("Server already connected or front unavailable");
+
+    if (argc == 6)
+        qtde_msgs = atoi(argv[5]);
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -372,7 +401,7 @@ int main(int argc, char *argv[])
 
     // sets all values in a buffer to zero
     bzero((char *)&serv_addr, sizeof(serv_addr));
-    portno = atoi(argv[1]);
+    portno = atoi(argv[2]);
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(portno);
