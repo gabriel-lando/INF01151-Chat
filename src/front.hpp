@@ -9,6 +9,7 @@ typedef struct
 } str_clients_front;
 
 void connect_to_server();
+int create_new_connection();
 int connect_client_to_server();
 bool send_message(packet pkt, int socket_id);
 void release_connection_by_id(int socket_id_client);

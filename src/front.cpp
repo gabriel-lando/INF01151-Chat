@@ -54,34 +54,41 @@ int get_free_client()
     return -1;
 }
 
+void close_srv(int socket_id)
+{
+    char c = '\0';
+    write(socket_id, &c, sizeof(char));
+    close(socket_id);
+}
+
 void connect_to_server()
 {
     if (server.connected) {
-        int id = connect_client_to_server();
+        int id = create_new_connection();
         if (id >= 0) {
-            close(id);
+            close_srv(id);
             return;
         }
 
         server.connected = false;
     }
 
-    while (connect_client_to_server() == -1) {
+    int id = 0;
+    while ((id = create_new_connection()) == -1) {
         usleep(1000);
     }
+    close_srv(id);
 
     fprintf(stderr, "Reconnecting all clients to new server\n");
 
     for (int i = 0; i < MAX_CONNS; i++) {
         if (!clients[i].free) {
-            int id = connect_client_to_server();
+            int id = create_new_connection();
             if (id >= 0)
                 clients[i].socket_id_server = id;
             fprintf(stderr, "Reconnecting clients %d to server %d\n", clients[i].socket_id_client, clients[i].socket_id_server);
         }
     }
-
-
 }
 
 void receive_message(int socket_fd)
@@ -115,7 +122,7 @@ void receive_message(int socket_fd)
     }
 }
 
-int connect_client_to_server()
+int create_new_connection()
 {
     if (server.connected == false)
         return -1;
@@ -145,6 +152,15 @@ int connect_client_to_server()
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         return -1;
 
+    return sockfd;
+}
+
+int connect_client_to_server()
+{
+    int sockfd = create_new_connection();
+    if (sockfd < 0)
+        return sockfd;
+
     std::thread receive_thread(receive_message, sockfd);
     receive_thread.detach();
     
@@ -155,6 +171,7 @@ int connect_client_to_server()
  * Sends a pkt message to all clients connected, and saves the message to a file
  * 
  * @param pkt  packet message
+ * @param socket_id socket id to send the packet
  */
 bool send_message(packet pkt, int socket_id)
 {
@@ -199,6 +216,7 @@ void release_connection_by_id(int socket_id_client)
  * Function to write messages on socket
  * 
  * @param pkt  message to be written on socket
+ * @param size message size
  * @param socket_id socket identifier
  */
 int write_to_socket(void *pkt, int size, int socket_id)
@@ -220,7 +238,7 @@ int add_new_user(packet pkt, int socket_id)
     int server_id = connect_client_to_server();
     if (server_id == -1)
     {
-        //Reconnect to server
+        connect_to_server();
     }
 
     data_mtx.lock();
@@ -229,7 +247,7 @@ int add_new_user(packet pkt, int socket_id)
     if (idx == -1)
     {
         data_mtx.unlock();
-        close(server_id);
+        close_srv(server_id);
         return -1;
     }
 
@@ -267,10 +285,11 @@ void manage_server(void *srv_info, int srv_id) {
         strcpy((char*)server.server.ip, tmp->ip);
         server.server.port = tmp->port;
         data_mtx.unlock();
+        
+        fprintf(stderr, "New server connected: %s:%d\n", server.server.ip, server.server.port);
     }
 
-    fprintf(stderr, "New server connected: %s:%d\n", server.server.ip, server.server.port);
-    close(srv_id);
+    close_srv(srv_id);
 }
 
 void manage_client(int socket_fd)

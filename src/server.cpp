@@ -342,13 +342,18 @@ int send_ip_to_front(char *front_ip, int front_port, server_info data)
         return -1;
 
     int n = write(sockfd, reinterpret_cast<void *>(&data), sizeof(server_info));
-    if (n != sizeof(server_info))
+    if (n != sizeof(server_info)){
+        close(sockfd);
         return -1;
+    }
 
     bzero(&data, sizeof(server_info));
     int response = recvfrom(sockfd, &data, sizeof(server_info), 0, NULL, NULL);
-    if (response == sizeof(server_info))
+    if (response == sizeof(server_info)){
+        fprintf(stderr, "Main server: %s:%d\n", data.ip, data.port);
+        close(sockfd);
         return 0;
+    }
 
     close(sockfd);
     return 1;
