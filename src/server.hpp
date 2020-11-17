@@ -1,13 +1,6 @@
 #include "helper.hpp"
 #include "io.hpp"
-
-class Server
-{
-public:
-    int port;
-
-private:
-};
+#include "sockets.hpp"
 
 /* A struct used by the server to manage all the clients connected */
 typedef struct

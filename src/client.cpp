@@ -5,14 +5,14 @@ std::mutex mtx; //Used to avoid concurrency when write message to console
 string username;
 string group_name;
 
+ClientSocket *srv_socket = nullptr;
+
 struct termios currt;
 int usernameLen = 0;
 int linePosition = 0;
 volatile int message_len = 0;
 volatile char current_msg[SCREEN_SIZE_Y] = {'\0'};
-volatile
-
-    int curs_initial_pos = SCREEN_SIZE_X - 1;
+volatile int curs_initial_pos = SCREEN_SIZE_X - 1;
 
 typedef struct
 {
@@ -37,22 +37,24 @@ void error_and_reset(string msg)
  * @param socket_fd file descriptor, will store values returned by socket system call
  */
 
-void receive_message(int socket_fd)
+void receive_message()
 {
     packet buffer;
+    int pkt_size;
 
-    while (true)
+    while (srv_socket->IsConnected())
     {
         bzero(&buffer, sizeof(packet));
-        int response = recvfrom(socket_fd, &buffer, sizeof(packet), 0, NULL, NULL);
-
-        if (response == -1)
-            error_and_reset("Recv failed\n");
-        else if (response == 0)
-            error_and_reset("Peer disconnected\n");
+        if (!srv_socket->ReceivePacket(&buffer, &pkt_size)) {
+            if (pkt_size == -1)
+                error_and_reset("Recv failed\n");
+            else if (pkt_size == 0)
+                error_and_reset("Peer disconnected\n");
+            continue;
+        }
 
         /* Success receiving a message */
-        if (response == sizeof(packet))
+        if (pkt_size == sizeof(packet))
             process_packet(buffer);
         else
             error_and_reset("Connection Timeout.");
@@ -68,64 +70,46 @@ void receive_message(int socket_fd)
 
 int main(int argc, char *argv[])
 {
-    int sockfd, portno, n;
-
-    struct sockaddr_in serv_addr;
-    struct hostent *server;
-    struct in_addr addr;
-
     if (argc != 5)
         error("Use: " + string(argv[0]) + " <username> <groupname> <server_ip> <server_port>");
 
     /* username and group_name name validations */
-    username = check_name(argv[1]) ? argv[1] : "invalid";
-    group_name = check_name(argv[2]) ? argv[2] : "invalid";
+    username = check_name(argv[1]) ? argv[1] : "";
+    group_name = check_name(argv[2]) ? argv[2] : "";
 
     const char *server_ip = argv[3];
     const char *port = argv[4];
 
-    if (username == "invalid" || group_name == "invalid")
+    if (!username.length() || !group_name.length())
         error("the username and group name can only contain letters, numbers and dot and must have between 4 and 20 characteres");
 
     usernameLen = username.length();
 
-    char buffer[sizeof(packet)];
     if (argc < 3)
         error("Please provide more arguments");
 
-    portno = atoi(port);
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int portno = atoi(port);
+    srv_socket = new ClientSocket((char *)server_ip, portno);
 
-    if (sockfd < 0)
-        error("ERROR opening socket");
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
-        error("Invalid address/ Address not supported");
-
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(portno);
-
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    if (!srv_socket->Connect())
         error("ERROR connecting");
 
     /* Client connected successfully, call print_layout to configure user interface on the terminal */
     print_layout();
 
     /* Thread to receive messages on that client */
-    std::thread receive_thread(receive_message, sockfd);
+    std::thread receive_thread(receive_message);
     receive_thread.detach();
 
     /* When a client connects, it sends an empty message to the server */
-    send_message("", sockfd);
+    send_message("");
 
     tcgetattr(STDIN_FILENO, &currt);
 
     while (true)
     {
         string message = read_message();
-        send_message(message, sockfd);
+        send_message(message);
     }
     tcsetattr(STDIN_FILENO, TCSANOW, &currt);
 }
@@ -141,15 +125,17 @@ int main(int argc, char *argv[])
  * @param message the message that should be written
  * @param socket_id socket identifier
  */
-void send_message(string message, int socket_id)
+void send_message(string message)
 {
     packet pkt;
     pkt.timestamp = get_time();
     strcpy(pkt.groupname, group_name.c_str());
     strcpy(pkt.username, username.c_str());
     strcpy(pkt.message, message.c_str());
+    pkt.type = PktType::DATA;
 
-    int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
+    //int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
+    int n = srv_socket->SendData(reinterpret_cast<char *>(&pkt), sizeof(packet));
     if (n < 0)
         error_and_reset("ERROR writing to socket");
 }
@@ -197,6 +183,9 @@ string read_message()
  */
 void process_packet(packet pkt)
 {
+    /*if(pkt.type == PktType::PING || pkt.type == PktType::PONG)
+        return;*/
+
     string msguser = string(pkt.username);
     if (msguser == username)
         msguser = "voce";

@@ -4,14 +4,15 @@ typedef struct
 {
     bool connected;
     server_info server;
+    int socket_id;
 } str_server_addr;
 
 std::mutex data_mtx, socket_mtx;
 
 volatile str_clients_front clients[MAX_CONNS];
-volatile str_server_addr server = {false, "", 0};
 int qtde_msgs = 0;
-
+volatile ClientSocket *server = nullptr;
+volatile server_info srv_data = {"", 0};
 /**
  * Function to initialize the str_clients structure with default values
  */
@@ -38,7 +39,7 @@ int find_user_idx(int socket_id)
 int find_client_id(int server_id)
 {
     for (int i = 0; i < MAX_CONNS; i++)
-        if (!clients[i].free && clients[i].socket_id_server == server_id)
+        if (!clients[i].free && clients[i].server_socket->GetID() == server_id)
             return clients[i].socket_id_client;
     return -1;
 }
@@ -63,50 +64,46 @@ void close_srv(int socket_id)
 
 void connect_to_server()
 {
-    if (server.connected) {
-        int id = create_new_connection();
-        if (id >= 0) {
-            close_srv(id);
-            return;
-        }
-
-        server.connected = false;
+    if (server != nullptr && ((ClientSocket*)server)->IsConnected()) {
+        return;
     }
 
-    int id = 0;
-    while ((id = create_new_connection()) == -1) {
-        usleep(1000);
-    }
-    close_srv(id);
+    delete(server);
+
+    ClientSocket *new_conn = nullptr;
+    while (!create_new_connection(new_conn)) { usleep(1000); }
+    server = new_conn;
+    new_conn = nullptr;
 
     fprintf(stderr, "Reconnecting all clients to new server\n");
 
     for (int i = 0; i < MAX_CONNS; i++) {
         if (!clients[i].free) {
-            int id = create_new_connection();
-            if (id >= 0)
-                clients[i].socket_id_server = id;
-            fprintf(stderr, "Reconnecting clients %d to server %d\n", clients[i].socket_id_client, clients[i].socket_id_server);
+            create_new_connection(new_conn);
+            if (new_conn->GetID() >= 0)
+                clients[i].server_socket = new_conn;
+            fprintf(stderr, "Reconnecting clients %d to server %d\n", clients[i].socket_id_client, clients[i].server_socket->GetID());
         }
     }
 }
 
-void receive_message(int socket_fd)
+void receive_message_from_server(ClientSocket *socket)
 {
     packet buffer;
+    int response;
 
-    while (true)
+    while (socket->IsConnected())
     {
-        bzero(&buffer, sizeof(packet));
-        int response = recvfrom(socket_fd, &buffer, sizeof(packet), 0, NULL, NULL);
-
-        if (response >= 0){
+        fprintf(stderr, "Chegou aqui 0\n");
+        if (!socket->ReceivePacket(&buffer, &response)) {
             socket_mtx.lock();
-            connect_to_server();
+            if (!((ClientSocket*)server)->IsConnected())
+                connect_to_server();
             socket_mtx.unlock();
         }
 
-        int client_id = find_client_id(socket_fd);
+        int client_id = find_client_id(socket->GetID());
+        fprintf(stderr, "Chegou aqui 1\n");
         
         /* Success receiving a message */
         if (response == sizeof(packet)) {
@@ -122,49 +119,17 @@ void receive_message(int socket_fd)
     }
 }
 
-int create_new_connection()
+bool create_new_connection(ClientSocket *new_socket)
 {
-    if (server.connected == false)
-        return -1;
+    if (((ClientSocket*)server)->IsConnected() == false)
+        return false;
     
-    struct sockaddr_in serv_addr, cli_addr;
-    char server_ip[20];
-    int server_port;
-
-    data_mtx.lock();
-    strcpy(server_ip, (char*)server.server.ip);
-    server_port = server.server.port;
-    data_mtx.unlock();
-
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd < 0)
-        return -1;
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0)
-        return -1;
-
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(server_port);
-
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-        return -1;
-
-    return sockfd;
-}
-
-int connect_client_to_server()
-{
-    int sockfd = create_new_connection();
-    if (sockfd < 0)
-        return sockfd;
-
-    std::thread receive_thread(receive_message, sockfd);
-    receive_thread.detach();
-    
-    return sockfd;
+    new_socket = new ClientSocket((char*)srv_data.ip, srv_data.port);
+    if(!new_socket->Connect()){
+        delete(new_socket);
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -183,6 +148,16 @@ bool send_message(packet pkt, int socket_id)
     return (n == sizeof(packet));
 }
 
+bool send_message_as_client(packet pkt, ClientSocket *socket)
+{
+    /* Send a packet to a specific socket */
+    socket_mtx.lock();
+    int n = socket->SendData(reinterpret_cast<void *>(&pkt), sizeof(packet));
+    socket_mtx.unlock();
+
+    return (n == sizeof(packet));
+}
+
 /**
  * Client disconnects from the server
  * 
@@ -191,7 +166,8 @@ bool send_message(packet pkt, int socket_id)
 void release_connection(int index)
 {
     close(clients[index].socket_id_client);
-    close(clients[index].socket_id_server);
+    if (clients[index].server_socket != nullptr)
+        clients[index].server_socket->Disconnect();
 
     data_mtx.lock();
     clients[index].free = true;
@@ -234,26 +210,32 @@ int write_to_socket(void *pkt, int size, int socket_id)
  */
 int add_new_user(packet pkt, int socket_id)
 {
-    /* Since the client structure is a shared variable, it must be protected with mutex to maintain consistency*/
-    int server_id = connect_client_to_server();
-    if (server_id == -1)
-    {
-        connect_to_server();
+    ClientSocket server_conn((char *)srv_data.ip, srv_data.port);
+
+    fprintf(stderr, "Chegou aqui -1\n");
+    
+    if(server_conn.Connect()){
+        std::thread receive_thread(receive_message_from_server, &server_conn);
+        receive_thread.detach();
     }
 
+    if (server_conn.GetID() <= 0)
+        connect_to_server();
+
+    /* Since the client structure is a shared variable, it must be protected with mutex to maintain consistency*/
     data_mtx.lock();
     int idx = get_free_client();
 
     if (idx == -1)
     {
         data_mtx.unlock();
-        close_srv(server_id);
+        server_conn.Disconnect();
         return -1;
     }
 
     clients[idx].free = false;
     clients[idx].socket_id_client = socket_id;
-    clients[idx].socket_id_server = server_id;
+    clients[idx].server_socket = &server_conn;
     data_mtx.unlock();
 
     return idx;
@@ -272,35 +254,67 @@ void send_error_to_client(packet data, int socket_fd)
 }
 
 void manage_server(void *srv_info, int srv_id) {
-    if (server.connected){
+    if (server != nullptr && ((ClientSocket*)server)->IsConnected()){
         socket_mtx.lock();
         int n = write_to_socket(srv_info, sizeof(server_info), srv_id);
         socket_mtx.unlock();
+
+        close_srv(srv_id);
     }
     else {
+        socket_mtx.lock();
+        int n = write_to_socket('\0', sizeof(char), srv_id);
+        socket_mtx.unlock();
+        close_srv(srv_id);
+
         server_info *tmp = (server_info *)srv_info;
 
-        data_mtx.lock();
-        server.connected = true;
-        strcpy((char*)server.server.ip, tmp->ip);
-        server.server.port = tmp->port;
-        data_mtx.unlock();
-        
-        fprintf(stderr, "New server connected: %s:%d\n", server.server.ip, server.server.port);
-    }
+        if (server != nullptr)
+            delete(server);
 
-    close_srv(srv_id);
+        usleep(1000);
+
+        data_mtx.lock();
+        server = new ClientSocket(tmp->ip, tmp->port);
+        if(!((ClientSocket*)server)->Connect()){
+            fprintf(stderr, "Error connecting to server: %s:%d\n", tmp->ip, tmp->port);
+            delete(server);
+            data_mtx.unlock();
+            return;
+        }
+        strcpy((char*)srv_data.ip, tmp->ip);
+        srv_data.port = tmp->port;
+        data_mtx.unlock();
+        fprintf(stderr, "New server connected: %s:%d\n", tmp->ip, tmp->port);
+    }
+}
+
+void send_ping(int socket_fd)
+{
+    packet data;
+    data.type = PktType::PING;
+    send_message(data, socket_fd);
+}
+
+void respond_to_ping(int socket_fd)
+{
+    packet data;
+    data.type = PktType::PONG;
+    send_message(data, socket_fd);
 }
 
 void manage_client(int socket_fd)
 {
     while (true)
     {
-        packet data, buffer;
-        bzero(&buffer, sizeof(packet));
+        packet data;
+        bzero(&data, sizeof(packet));
 
-        int n = read(socket_fd, &buffer, sizeof(packet));
-        data = buffer;
+        fprintf(stderr, "Chegou aqui -2\n");
+
+        int n = read(socket_fd, &data, sizeof(packet));
+
+        fprintf(stderr, "Chegou aqui -3\n");
 
         if (n != sizeof(packet))
         {
@@ -312,10 +326,24 @@ void manage_client(int socket_fd)
             break;
         }
 
-        if (!server.connected){
+        fprintf(stderr, "Chegou aqui -4\n");
+
+        if(data.type == PktType::PING){
+            respond_to_ping(socket_fd);
+            continue;
+        }
+        else if(data.type == PktType::PONG){
+            continue;
+        }
+
+        fprintf(stderr, "Chegou aqui -5\n");
+
+        if (server == nullptr || !((ClientSocket*)server)->IsConnected()){
             send_error_to_client(data, socket_fd);
             break;
         }
+
+        fprintf(stderr, "Chegou aqui -6\n");
 
         int idx = find_user_idx(socket_fd);
         if (idx == -1)
@@ -324,9 +352,11 @@ void manage_client(int socket_fd)
             idx = add_new_user(data, socket_fd);
         }
 
+        fprintf(stderr, "Chegou aqui -7\n");
+
         if (idx != -1)
         {
-            std::thread write_message(send_message, data, clients[idx].socket_id_server);
+            std::thread write_message(send_message_as_client, data, clients[idx].server_socket);
             write_message.detach();
         }
         else
@@ -334,6 +364,22 @@ void manage_client(int socket_fd)
             send_error_to_client(data, socket_fd);
             break;
         }
+    }
+}
+
+void check_server_connection() {
+    while(true) {
+        usleep(PING_TIME);
+        if (server != nullptr) {
+            if (!((ClientSocket*)server)->IsConnected()){
+                // Do something (connection error)
+            }
+        }
+
+        /*if (!server.connected || server.socket_id <= 0)
+            continue;
+
+        send_ping(server.socket_id);*/
     }
 }
 
@@ -355,9 +401,6 @@ int main(int argc, char *argv[])
         cli_addr: address of the client connected
     */
     struct sockaddr_in serv_addr, cli_addr;
-
-    // n contains number of characteres read or written
-    int n;
 
     if (argc != 2)
         error("Use: <port>");
@@ -381,6 +424,8 @@ int main(int argc, char *argv[])
         error("ERROR on listening");
 
     std::cerr << "Front-end Started!" << endl;
+
+    thread check_server(check_server_connection);
 
     while (true)
     {

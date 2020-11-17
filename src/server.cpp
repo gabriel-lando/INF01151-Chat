@@ -260,6 +260,14 @@ void send_message(packet pkt)
     socket_mtx.unlock();
 }
 
+void respond_to_ping(int socket_fd)
+{
+    //fprintf(stderr, "DBG: Ping received\n");
+    packet data;
+    data.type = PktType::PONG;
+    write_to_socket(data, socket_fd);
+}
+
 /**
  * Funtion with a loop to keep receiving messages from the connected clients
  * 
@@ -279,6 +287,14 @@ void receive_message(int socket_fd)
         {
             release_connection_by_id(socket_fd);
             break;
+        }
+
+        if(data.type == PktType::PING){
+            respond_to_ping(socket_fd);
+            continue;
+        }
+        else if(data.type == PktType::PONG){
+            continue;
         }
 
         bool was_connected = false;
@@ -323,39 +339,27 @@ void receive_message(int socket_fd)
 
 int send_ip_to_front(char *front_ip, int front_port, server_info data)
 {
-    struct sockaddr_in serv_addr, cli_addr;
-
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd < 0)
+    ClientSocket front(front_ip, front_port);
+    if (!front.Connect())
         return -1;
 
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, front_ip, &serv_addr.sin_addr) <= 0)
-        return -1;
+    int bytes_read = front.SendData(reinterpret_cast<void *>(&data), sizeof(server_info));
 
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(front_port);
-
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    if (bytes_read != sizeof(server_info))
         return -1;
-
-    int n = write(sockfd, reinterpret_cast<void *>(&data), sizeof(server_info));
-    if (n != sizeof(server_info)){
-        close(sockfd);
-        return -1;
-    }
 
     bzero(&data, sizeof(server_info));
-    int response = recvfrom(sockfd, &data, sizeof(server_info), 0, NULL, NULL);
-    if (response == sizeof(server_info)){
+    front.ReceiveData(&data, sizeof(server_info), &bytes_read);
+    front.Disconnect();
+
+    if (bytes_read == 0)
+        return -1;
+    
+    if (bytes_read == sizeof(server_info)){
         fprintf(stderr, "Main server: %s:%d\n", data.ip, data.port);
-        close(sockfd);
         return 0;
     }
 
-    close(sockfd);
     return 1;
 }
 

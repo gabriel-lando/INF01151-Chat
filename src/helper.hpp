@@ -39,6 +39,12 @@ bool check_name(const string &name);
 time_t get_time();
 string get_timestamp(time_t time);
 
+enum PktType
+{
+    DATA,
+    PING,
+    PONG
+};
 
 /**
  * Struct containing the format of the messages
@@ -49,6 +55,7 @@ typedef struct __packet
     char username[21];  // Username
     char groupname[21]; // Group Name
     char message[100];  // Message data
+    PktType type;
 } packet;
 
 typedef struct
