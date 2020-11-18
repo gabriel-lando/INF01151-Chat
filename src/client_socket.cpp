@@ -39,14 +39,16 @@ bool ClientSocket::SendPing(){
 }
 
 void ClientSocket::SendPingThread(){
-    while(isConnected) {
+    while(IsConnected()) {
         usleep(PING_TIME);
-        if (sockfd <= 0 || !SendPing())
+        if (sockfd <= 0 || !SendPing()) {
+            fprintf(stderr, "PING Error\n");
             isConnected = false;
+        }
     }
 }
 
-bool ClientSocket::Connect(){
+bool ClientSocket::Connect(bool send_ping){
     struct sockaddr_in sockaddr;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     
@@ -62,8 +64,12 @@ bool ClientSocket::Connect(){
 
     isConnected = true;
 
-    thread checkConnection(&ClientSocket::SendPingThread, this);
-    checkConnection.detach();
+    fprintf(stderr, "Socket ID: %d\n", sockfd);
+
+    if (send_ping) {
+        thread checkConnection(&ClientSocket::SendPingThread, this);
+        checkConnection.detach();
+    }
 
     return true;
 }
@@ -78,31 +84,28 @@ int ClientSocket::SendData(void *pkt, int size) {
     return n;
 }
 
-bool ClientSocket::ReceivePacket(packet *data, int *size) {
-
-    if (!IsConnected())
-        return false;
-
-    packet buffer;
-    bzero(&buffer, sizeof(packet));
-    
-    *size = recvfrom(sockfd, &buffer, sizeof(packet), 0, NULL, NULL);
-
-    if (*size != sizeof(packet))
-    {
-        Disconnect();
+bool ClientSocket::ReceivePacket(packet *data, int *bytes_read) {
+    if (!IsConnected()){
+        *bytes_read = 0;
         return false;
     }
 
-    if(buffer.type == PktType::PING){
+    bzero(data, sizeof(packet));
+    
+    *bytes_read = recvfrom(sockfd, data, sizeof(packet), 0, NULL, NULL);
+
+    if (*bytes_read != sizeof(packet)){
+        //Disconnect();
+        return false;
+    }
+
+    if(data->type == PktType::PING){
         SendPong();
         return false;
     }
-    else if(buffer.type == PktType::PONG){
+    else if(data->type == PktType::PONG){
         return false;
     }
-
-    *data = buffer;
     return true;
 }
 

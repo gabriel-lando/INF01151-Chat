@@ -10,6 +10,7 @@ typedef struct
     time_t last_msg;
     char group[50];
     char user[20];
+    bool isBackup;
 } str_clients;
 
 void send_message(packet pkt);

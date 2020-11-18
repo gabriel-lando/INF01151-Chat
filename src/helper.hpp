@@ -41,9 +41,10 @@ string get_timestamp(time_t time);
 
 enum PktType
 {
-    DATA,
     PING,
-    PONG
+    PONG,
+    DATA,
+    BACKUP
 };
 
 /**

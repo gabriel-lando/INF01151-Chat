@@ -26,7 +26,7 @@ SERVERSRCS = $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
 RAWFRONTSRCS := front.cpp
 FRONTSRCS = $(addprefix $(SRCDIR)/, $(RAWFRONTSRCS))
 ## Sources used by both
-RAWSRCS = helper.cpp io.cpp client_socket.cpp
+RAWSRCS = helper.cpp io.cpp client_socket.cpp server_socket.cpp
 SRCS = $(addprefix $(SRCDIR)/, $(RAWSRCS))
 ## Object files
 RAWCLIENTOBJS := $(RAWCLIENTSRCS:%.cpp=%.o)

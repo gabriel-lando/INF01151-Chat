@@ -3,6 +3,7 @@
 std::mutex data_mtx, socket_mtx;
 
 volatile str_clients clients[MAX_CONNS];
+volatile ServerSocket *server = nullptr;
 int qtde_msgs = 0;
 
 /**
@@ -16,6 +17,7 @@ void init_clients()
         clients[i].free = true;
         clients[i].socket_id = 0;
         clients[i].last_msg = 0;
+        clients[i].isBackup = false;
         strcpy((char *)clients[i].group, "");
         strcpy((char *)clients[i].user, "");
     }
@@ -54,20 +56,23 @@ int find_user_idx(int socket_id)
 int add_new_user(packet pkt, int socket_id, bool *connected)
 {
     // Check if user is already connected
-    int count = 0;
-    for (int i = 0; i < MAX_CONNS; i++)
-    {
-        if (!clients[i].free && !strcmp((char *)clients[i].user, pkt.username))
+    if (pkt.type == PktType::DATA){
+        int count = 0;
+        for (int i = 0; i < MAX_CONNS; i++)
         {
-            count++;
-            if (!strcmp((char *)clients[i].group, pkt.groupname))
-                *connected = true;
+            if (!clients[i].free && !strcmp((char *)clients[i].user, pkt.username))
+            {
+                count++;
+                if (!strcmp((char *)clients[i].group, pkt.groupname))
+                    *connected = true;
+            }
         }
+
+        /* Server does not allow more than two instances of the same client connected */
+        if (count >= MAX_SIM_USR)
+            return -1;
     }
 
-    /* Server does not allow more than two instances of the same client connected */
-    if (count >= MAX_SIM_USR)
-        return -1;
 
     /* Since the client structure is a shared variable, it must be protected with mutex to maintain consistency*/
     data_mtx.lock();
@@ -81,10 +86,19 @@ int add_new_user(packet pkt, int socket_id, bool *connected)
 
     clients[idx].free = false;
     clients[idx].socket_id = socket_id;
-    clients[idx].last_msg = pkt.timestamp;
-    strcpy((char *)clients[idx].group, pkt.groupname);
-    strcpy((char *)clients[idx].user, pkt.username);
+
+    if (pkt.type == PktType::DATA) {
+        clients[idx].last_msg = pkt.timestamp;
+        strcpy((char *)clients[idx].group, pkt.groupname);
+        strcpy((char *)clients[idx].user, pkt.username);
+    }
+    else
+        clients[idx].isBackup = true;
+
     data_mtx.unlock();
+
+    if (pkt.type == PktType::BACKUP)
+        return -2;
 
     return idx;
 }
@@ -125,12 +139,14 @@ void warn_users_from_disconnection(string user, string group)
  */
 void release_connection(int index)
 {
-    close(clients[index].socket_id);
+    //close(clients[index].socket_id);
+    ((ServerSocket*)server)->DisconnectClient(clients[index].socket_id);
 
     data_mtx.lock();
     string user = (char *)clients[index].user;
     string group = (char *)clients[index].group;
     clients[index].free = true;
+    clients[index].isBackup = false;
     data_mtx.unlock();
 
     warn_users_from_disconnection(user, group);
@@ -147,7 +163,8 @@ void release_connection_by_id(int socket_id)
     if (idx != -1)
         release_connection(idx);
     else
-        close(socket_id);
+        //close(socket_id);
+        ((ServerSocket*)server)->DisconnectClient(socket_id);
 }
 
 
@@ -171,7 +188,7 @@ void check_connection_timeout()
 
         for (int i = 0; i < MAX_CONNS; i++)
         {
-            if (clients[i].free)
+            if (clients[i].free || clients[i].isBackup)
                 continue;
             if (curr_time - clients[i].last_msg > CON_TIMEOUT)
             {
@@ -196,9 +213,8 @@ void check_connection_timeout()
  */
 int write_to_socket(packet pkt, int socket_id)
 {
-
-    int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
-
+    int n = ((ServerSocket*)server)->SendData(reinterpret_cast<char *>(&pkt),sizeof(packet), socket_id);
+    //int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
     return n;
 }
 
@@ -250,7 +266,7 @@ void send_message(packet pkt)
     socket_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++)
     {
-        if (clients[i].free || strcmp((char *)clients[i].group, pkt.groupname))
+        if (clients[i].free || (strcmp((char *)clients[i].group, pkt.groupname) && !clients[i].isBackup))
             continue;
 
         int n = write_to_socket(pkt, clients[i].socket_id);
@@ -260,14 +276,6 @@ void send_message(packet pkt)
     socket_mtx.unlock();
 }
 
-void respond_to_ping(int socket_fd)
-{
-    //fprintf(stderr, "DBG: Ping received\n");
-    packet data;
-    data.type = PktType::PONG;
-    write_to_socket(data, socket_fd);
-}
-
 /**
  * Funtion with a loop to keep receiving messages from the connected clients
  * 
@@ -275,26 +283,20 @@ void respond_to_ping(int socket_fd)
  */
 void receive_message(int socket_fd)
 {
+    packet data;
+    int bytes_read;
+
     while (true)
     {
-        packet data, buffer;
-        bzero(&buffer, sizeof(packet));
+        bool result = ((ServerSocket*)server)->ReceivePacket(&data, &bytes_read, socket_fd);
 
-        int n = read(socket_fd, &buffer, sizeof(packet));
-        data = buffer;
-
-        if (n != sizeof(packet))
+        if (!result)
         {
+            if (bytes_read == sizeof(packet))
+                continue;
+
             release_connection_by_id(socket_fd);
             break;
-        }
-
-        if(data.type == PktType::PING){
-            respond_to_ping(socket_fd);
-            continue;
-        }
-        else if(data.type == PktType::PONG){
-            continue;
         }
 
         bool was_connected = false;
@@ -303,6 +305,9 @@ void receive_message(int socket_fd)
         {
             /* if user was not found on the clients array, add a new one */
             idx = add_new_user(data, socket_fd, &was_connected);
+
+            if (idx == -2)
+                continue;
 
             if (idx != -1)
             {
@@ -337,30 +342,63 @@ void receive_message(int socket_fd)
     }
 }
 
-int send_ip_to_front(char *front_ip, int front_port, server_info data)
+int send_ip_to_front(char *front_ip, int front_port, server_info data, server_info *resp)
 {
     ClientSocket front(front_ip, front_port);
-    if (!front.Connect())
+    if (!front.Connect(false))
         return -1;
 
-    int bytes_read = front.SendData(reinterpret_cast<void *>(&data), sizeof(server_info));
+    int bytes_written = front.SendData(reinterpret_cast<void *>(&data), sizeof(server_info));
 
-    if (bytes_read != sizeof(server_info))
+    if (bytes_written != sizeof(server_info))
         return -1;
 
-    bzero(&data, sizeof(server_info));
-    front.ReceiveData(&data, sizeof(server_info), &bytes_read);
+    bzero(resp, sizeof(server_info));
+    int bytes_read;
+    front.ReceiveData(resp, sizeof(server_info), &bytes_read);
     front.Disconnect();
 
     if (bytes_read == 0)
         return -1;
     
     if (bytes_read == sizeof(server_info)){
-        fprintf(stderr, "Main server: %s:%d\n", data.ip, data.port);
+        fprintf(stderr, "Main server: %s:%d\n", resp->ip, resp->port);
         return 0;
     }
 
     return 1;
+}
+
+void connect_to_main_server(server_info srv_info)
+{
+    ClientSocket client(srv_info.ip, srv_info.port);
+    if (!client.Connect())
+        return;
+    
+    packet data = {0, "", "", "", PktType::BACKUP};
+
+    int bytes_written = client.SendData(reinterpret_cast<void *>(&data), sizeof(packet));
+    if (bytes_written != sizeof(packet))
+        return;
+    
+    int bytes_read;
+
+    while (client.IsConnected())
+    {
+        bool result = client.ReceivePacket(&data, &bytes_read);
+
+        if (!result)
+        {
+            if (bytes_read == sizeof(packet) && data.type != PktType::DATA)
+                continue;
+            break;
+        }
+
+        fprintf(stderr, "%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
+
+        if (!save_message(data))
+            error("Error saving message\n");
+    }
 }
 
 /**
@@ -373,70 +411,62 @@ int main(int argc, char *argv[])
     // Clear data structures to avoid memory trash
     init_clients();
 
-    /*
-        sockfd: file descriptor, will store values returned by socket system call
-        newsockfd: file descriptor, will store values returned by accept system call
-        portno: port number on which the server accepts connections
-        cli_len: size of the address of the client 
-    */
-    int sockfd, newsockfd, portno, cli_len;
-
-    /*
-        serv_addr: address of the server
-        cli_addr: address of the client connected
-    */
-    struct sockaddr_in serv_addr, cli_addr;
-
-    // n contains number of characteres read or written
-    int n;
-
     if (argc < 5 || argc > 6)
         error("Use: <server_ip> <server_port> <front_ip> <front_port> <N>");
 
     int front_ip = atoi(argv[4]);
-    server_info srv_info;
+    server_info srv_info, srv_resp;
     strcpy(srv_info.ip, argv[1]);
     srv_info.port = atoi(argv[2]);
-    if (send_ip_to_front(argv[3], front_ip, srv_info) <= 0)
-        error("Server already connected or front unavailable");
+    int resp = 0;
+
+    do {
+        resp = send_ip_to_front(argv[3], front_ip, srv_info, &srv_resp);
+        if (resp < 0)
+            error("Front unavailable");
+        if (resp == 0) {
+            connect_to_main_server(srv_resp);
+            sleep(1);
+        }
+    } while (resp <= 0);
 
     if (argc == 6)
         qtde_msgs = atoi(argv[5]);
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int portno = atoi(argv[2]);
 
-    if (sockfd < 0)
-        error("ERROR opening socket");
-
-    // sets all values in a buffer to zero
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-    portno = atoi(argv[2]);
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(portno);
-
-    if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-        error("ERROR on binding");
-
-    if (listen(sockfd, MAX_CONNS) != 0)
-        error("ERROR on listening");
+    server = new ServerSocket(portno);
+    switch(((ServerSocket*)server)->Start())
+    {
+        case -1:
+            error("ERROR opening socket"); break;
+        case -2:
+            error("ERROR on binding"); break;
+        case -3:
+            error("ERROR on listening"); break;
+        default:
+            break;
+    }
 
     std::cerr << "Server Started!" << endl;
 
     thread timeout(check_connection_timeout);
     timeout.detach();
 
-    while (true)
+    int newsockfd;
+
+    while (newsockfd = ((ServerSocket*)server)->WaitNewConnection())
     {
-        cli_len = sizeof(cli_addr);
-        newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, (socklen_t *)(&cli_len));
-
-        if (newsockfd < 0)
+        if (newsockfd < 0) {
+            ((ServerSocket*)server)->Disconnect();
             error("ERROR on accept");
+        }
 
-        std::cerr << "New connection" << endl;
+        std::cerr << "New connection: " << newsockfd << endl;
 
         thread receive_msg(receive_message, newsockfd);
         receive_msg.detach();
     }
+
+    ((ServerSocket*)server)->Disconnect();
 }
