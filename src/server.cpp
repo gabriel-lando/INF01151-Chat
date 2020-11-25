@@ -238,8 +238,6 @@ void send_message(packet pkt)
             continue;
         write_to_socket(response, backups_sockets[i]);
 
-        //fprintf(stderr, "Sent to bkp %d: %s %s [%s]: %s\n", i, (get_timestamp(response.timestamp)).c_str(), response.username, response.groupname, response.message);
-
         packet ack;
         do {
             if(!server->ReceivePacket(&ack, &bytes_received, backups_sockets[i])){
@@ -325,7 +323,6 @@ void receive_message(int socket_fd)
 
         bool was_connected = false;
         int idx = find_user_idx(socket_fd);
-        fprintf(stderr, "Aqui [%s]: %d\n", data.username, idx);
         if (idx == -1) {
             /* if user was not found on the clients array, add a new one */
             idx = add_new_user(data, socket_fd, &was_connected);
@@ -335,7 +332,6 @@ void receive_message(int socket_fd)
                 strcpy(data.message, "<entrou no grupo>");
             }
         }
-        fprintf(stderr, "Aqui 2 [%s]: %d\n", data.username, idx);
 
         if (idx != -1)
         {
@@ -394,7 +390,6 @@ void im_a_backup(int my_port) {
             }
         }
         else {
-            //fprintf(stderr, "%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
             if (!save_message(data))
                 error("Error saving message\n");
             else {
