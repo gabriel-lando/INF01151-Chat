@@ -1,8 +1,6 @@
-# chat
+# Sisop 2 - Chat
 
----------------
-## How to Build
----------------
+# How to Build
 
 ## Option 1: Run in a Docker container
 ### Install Docker
@@ -67,9 +65,8 @@ make
 ```
 - The executables will be generated inside folder `bin`
 
----------------
-## How to Run
----------------
+# How to Run
+
 ### Server
 ```bash
 ./server <port> <N_msgs>
