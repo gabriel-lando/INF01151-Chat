@@ -3,11 +3,11 @@
 
 #include "helper.hpp"
 
-#define PING_TIME 1000000 //100.000 us = 100ms 
+#define PING_TIME 1000000 //1.000.000 us = 1s 
 
 class ClientSocket {
 public:
-    ClientSocket(char *ip, int port);
+    ClientSocket(const char *ip, int port);
     ~ClientSocket();
     int GetID();
     bool Connect(bool send_ping = true);

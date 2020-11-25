@@ -7,9 +7,13 @@ ServerSocket::ServerSocket(int port){
 }
 
 ServerSocket::~ServerSocket() {
-    isConnected = false;
-    if (sockfd != -1)
-        close(sockfd);
+    try {
+        if (isConnected) {
+            isConnected = false;
+            if (sockfd != -1)
+                close(sockfd);
+        }
+    } catch(...) { }
 }
 
 int ServerSocket::GetID(){
@@ -21,19 +25,27 @@ bool ServerSocket::IsConnected(){
 }
 
 bool ServerSocket::SendPong(int socketid){
-    packet data;
-    data.type = PktType::PONG;
-    int n = SendData((void*)&data, sizeof(packet), socketid);
-
-    return (n == sizeof(packet));
+    try {
+        packet data;
+        data.type = PktType::PONG;
+        int n = SendData((void*)&data, sizeof(packet), socketid);
+        return (n == sizeof(packet));
+    }
+    catch(...) {
+        return false;
+    }
 }
 
 bool ServerSocket::SendPing(int socketid){
-    packet data;
-    data.type = PktType::PING;
-    int n = SendData((void*)&data, sizeof(packet), socketid);
-
-    return (n == sizeof(packet));
+    try {
+        packet data;
+        data.type = PktType::PING;
+        int n = SendData((void*)&data, sizeof(packet), socketid);
+        return (n == sizeof(packet));
+    }
+    catch(...) {
+        return false;
+    }
 }
 
 /*void ServerSocket::SendPingThread(){
@@ -45,43 +57,64 @@ bool ServerSocket::SendPing(int socketid){
 }*/
 
 int ServerSocket::Start(){
+    try {
+        bzero((char *)&serv_addr, sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_addr.s_addr = INADDR_ANY;
+        serv_addr.sin_port = htons(this->port);
 
-    bzero((char *)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(this->port);
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        /*int set = 1;
+        setsockopt(sd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));*/
+        if (sockfd < 0)
+            return -1;
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
+        if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+            return -2;
+
+        if (listen(sockfd, MAX_CONNS) != 0)
+            return -3;
+    } catch(...) {
         return -1;
-
-    if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-        return -2;
-
-    if (listen(sockfd, MAX_CONNS) != 0)
-        return -3;
+    }
 
     return 0;
 }
 
 int ServerSocket::WaitNewConnection(){
-
-    int cli_len = sizeof(cli_addr);
-    return accept(sockfd, (struct sockaddr *)&cli_addr, (socklen_t *)(&cli_len));
+    try {
+        int cli_len = sizeof(cli_addr);
+        return accept(sockfd, (struct sockaddr *)&cli_addr, (socklen_t *)(&cli_len));
+    } catch(...) {
+        return -1;
+    }
 }
 
 void ServerSocket::Disconnect() {
-    isConnected = false;
-    close(sockfd);
+    try {
+        if (isConnected) {
+            isConnected = false;
+            close(sockfd);
+        }
+    } catch(...) { }
 }
 
 void ServerSocket::DisconnectClient(int socketid) {
-    close(socketid);
+    try {
+        if (isConnected) {
+            isConnected = false;
+            close(socketid);
+        }
+    } catch(...) { }
 }
 
 int ServerSocket::SendData(void *pkt, int size, int socketid) {
-    int n = write(socketid, pkt, size);
-    return n;
+    try {
+        int n = write(socketid, pkt, size);
+        return n;
+    } catch(...) {
+        return 0;
+    }
 }
 
 bool ServerSocket::ReceivePacket(packet *data, int *bytes_read, int socketid) {
@@ -90,21 +123,27 @@ bool ServerSocket::ReceivePacket(packet *data, int *bytes_read, int socketid) {
         return false;
     }*/
 
-    bzero(data, sizeof(packet));
-    
-    *bytes_read = read(socketid, data, sizeof(packet));
-    //*bytes_read = recvfrom(socketid, data, sizeof(packet), 0, NULL, NULL);
+    try {
 
-    if (*bytes_read != sizeof(packet)){
-        //Disconnect();
-        return false;
-    }
+        bzero(data, sizeof(packet));
+        
+        *bytes_read = read(socketid, data, sizeof(packet));
+        //*bytes_read = recvfrom(socketid, data, sizeof(packet), 0, NULL, NULL);
 
-    if(data->type == PktType::PING){
-        SendPong(socketid);
-        return false;
-    }
-    else if(data->type == PktType::PONG){
+        if (*bytes_read != sizeof(packet)){
+            //Disconnect();
+            return false;
+        }
+
+        if(data->type == PktType::PING){
+            SendPong(socketid);
+            return false;
+        }
+        else if(data->type == PktType::PONG){
+            return false;
+        }
+
+    } catch(...) {
         return false;
     }
 
@@ -112,12 +151,16 @@ bool ServerSocket::ReceivePacket(packet *data, int *bytes_read, int socketid) {
 }
 
 bool ServerSocket::ReceiveData(void *data, int size, int *bytes_read, int socketid) {
-    bzero(data, size);
+    try {
+        bzero(data, size);
 
-    *bytes_read = 0;
-    *bytes_read = recvfrom(socketid, data, size, 0, NULL, NULL);
+        *bytes_read = 0;
+        *bytes_read = recvfrom(socketid, data, size, 0, NULL, NULL);
 
-    if (*bytes_read != size)
+        if (*bytes_read != size)
+            return false;
+        return true;
+    } catch(...) {
         return false;
-    return true;
+    }
 }

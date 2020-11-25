@@ -23,6 +23,7 @@
 #include <ctime>
 #include <sys/time.h>
 #include <iomanip>
+#include <signal.h>
 
 using namespace std;
 
@@ -44,6 +45,9 @@ enum PktType
     PING,
     PONG,
     DATA,
+    ACK,
+    TIMEOUT,
+    RECONNECTION,
     BACKUP
 };
 

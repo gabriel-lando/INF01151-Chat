@@ -3,13 +3,16 @@
 std::mutex data_mtx, socket_mtx;
 
 volatile str_clients clients[MAX_CONNS];
-volatile ServerSocket *server = nullptr;
+volatile str_backups backups_table[MAX_BACKUPS];
+volatile int backups_sockets[MAX_BACKUPS];
+ServerSocket *server = nullptr;
+int server_port = 0;
 int qtde_msgs = 0;
 
 /**
  * Function to initialize the str_clients structure with default values
  */
-void init_clients()
+void init_data_structures()
 {
     data_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++)
@@ -20,6 +23,12 @@ void init_clients()
         clients[i].isBackup = false;
         strcpy((char *)clients[i].group, "");
         strcpy((char *)clients[i].user, "");
+    }
+
+    for (int i = 0; i < MAX_BACKUPS; i++) {
+        backups_table[i].free = true;
+        backups_table[i].port = 0;
+        backups_sockets[i] = 0;
     }
     data_mtx.unlock();
 }
@@ -56,30 +65,27 @@ int find_user_idx(int socket_id)
 int add_new_user(packet pkt, int socket_id, bool *connected)
 {
     // Check if user is already connected
-    if (pkt.type == PktType::DATA){
-        int count = 0;
-        for (int i = 0; i < MAX_CONNS; i++)
+    int count = 0;
+    for (int i = 0; i < MAX_CONNS; i++)
+    {
+        if (!clients[i].free && !strcmp((char *)clients[i].user, pkt.username))
         {
-            if (!clients[i].free && !strcmp((char *)clients[i].user, pkt.username))
-            {
-                count++;
-                if (!strcmp((char *)clients[i].group, pkt.groupname))
-                    *connected = true;
-            }
+            count++;
+            if (!strcmp((char *)clients[i].group, pkt.groupname))
+                *connected = true;
         }
-
-        /* Server does not allow more than two instances of the same client connected */
-        if (count >= MAX_SIM_USR)
-            return -1;
     }
+
+    /* Server does not allow more than two instances of the same client connected */
+    if (count >= MAX_SIM_USR)
+        return -1;
 
 
     /* Since the client structure is a shared variable, it must be protected with mutex to maintain consistency*/
     data_mtx.lock();
     int idx = get_free_client();
 
-    if (idx == -1)
-    {
+    if (idx == -1) {
         data_mtx.unlock();
         return -1;
     }
@@ -87,18 +93,11 @@ int add_new_user(packet pkt, int socket_id, bool *connected)
     clients[idx].free = false;
     clients[idx].socket_id = socket_id;
 
-    if (pkt.type == PktType::DATA) {
-        clients[idx].last_msg = pkt.timestamp;
-        strcpy((char *)clients[idx].group, pkt.groupname);
-        strcpy((char *)clients[idx].user, pkt.username);
-    }
-    else
-        clients[idx].isBackup = true;
+    clients[idx].last_msg = pkt.timestamp;
+    strcpy((char *)clients[idx].group, pkt.groupname);
+    strcpy((char *)clients[idx].user, pkt.username);
 
     data_mtx.unlock();
-
-    if (pkt.type == PktType::BACKUP)
-        return -2;
 
     return idx;
 }
@@ -163,8 +162,7 @@ void release_connection_by_id(int socket_id)
     if (idx != -1)
         release_connection(idx);
     else
-        //close(socket_id);
-        ((ServerSocket*)server)->DisconnectClient(socket_id);
+        server->DisconnectClient(socket_id);
 }
 
 
@@ -176,36 +174,6 @@ void update_user_connection(packet pkt, int idx)
 }
 
 /**
- * Function to controls the idleness of clients 
- * 
- * A thread verifies periodically if the time of the last message of the clients is greater than CON_TIMEOUT
- */
-void check_connection_timeout()
-{
-    while (true)
-    {
-        time_t curr_time = get_time();
-
-        for (int i = 0; i < MAX_CONNS; i++)
-        {
-            if (clients[i].free || clients[i].isBackup)
-                continue;
-            if (curr_time - clients[i].last_msg > CON_TIMEOUT)
-            {
-                fprintf(stderr, "Client %s [ID %d] timed out.\n", clients[i].user, clients[i].socket_id);
-                socket_mtx.lock();
-                char c = '\0';
-                int n = write(clients[i].socket_id, &c, sizeof(char));
-                socket_mtx.unlock();
-                release_connection(i);
-            }
-        }
-
-        sleep(5);
-    }
-}
-
-/**
  * Function to write messages on socket
  * 
  * @param pkt  message to be written on socket
@@ -213,8 +181,7 @@ void check_connection_timeout()
  */
 int write_to_socket(packet pkt, int socket_id)
 {
-    int n = ((ServerSocket*)server)->SendData(reinterpret_cast<char *>(&pkt),sizeof(packet), socket_id);
-    //int n = write(socket_id, reinterpret_cast<char *>(&pkt), sizeof(packet));
+    int n = server->SendData(reinterpret_cast<char *>(&pkt),sizeof(packet), socket_id);
     return n;
 }
 
@@ -266,7 +233,7 @@ void send_message(packet pkt)
     socket_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++)
     {
-        if (clients[i].free || (strcmp((char *)clients[i].group, pkt.groupname) && !clients[i].isBackup))
+        if (clients[i].free || strcmp((char *)clients[i].group, pkt.groupname))
             continue;
 
         int n = write_to_socket(pkt, clients[i].socket_id);
@@ -274,6 +241,38 @@ void send_message(packet pkt)
             release_connection(i);
     }
     socket_mtx.unlock();
+}
+
+void close_client_conn(int socket_id)
+{
+    socket_mtx.lock();
+    char c = '\0';
+    server->SendData(&c, sizeof(char), socket_id);
+    server->DisconnectClient(socket_id);
+    socket_mtx.unlock();
+}
+
+void add_backup(int socket_fd, int port) {
+
+    data_mtx.lock();
+    for (int i = 0; i < MAX_BACKUPS; i++) {
+        if (!backups_table[i].free)
+            continue;
+        
+        backups_table[i].free = false;
+        backups_table[i].port = port;
+        backups_sockets[i] = socket_fd;
+        break;
+    }
+
+    for (int i = 0; i < MAX_BACKUPS; i++) {
+        if (backups_table[i].free || backups_table[i].port == server_port)
+            continue;
+        server->SendData((void*)backups_table, sizeof(backups_table), backups_sockets[i]);
+    }
+    
+    data_mtx.unlock();
+    return;
 }
 
 /**
@@ -288,29 +287,27 @@ void receive_message(int socket_fd)
 
     while (true)
     {
-        bool result = ((ServerSocket*)server)->ReceivePacket(&data, &bytes_read, socket_fd);
-
-        if (!result)
-        {
+        if (!server->ReceivePacket(&data, &bytes_read, socket_fd)){
             if (bytes_read == sizeof(packet))
                 continue;
 
+            close_client_conn(socket_fd);
             release_connection_by_id(socket_fd);
+            break;
+        }
+
+        if (data.type == PktType::BACKUP) {
+            add_backup(socket_fd, data.timestamp);
             break;
         }
 
         bool was_connected = false;
         int idx = find_user_idx(socket_fd);
-        if (idx == -1)
-        {
+        if (idx == -1) {
             /* if user was not found on the clients array, add a new one */
             idx = add_new_user(data, socket_fd, &was_connected);
 
-            if (idx == -2)
-                continue;
-
-            if (idx != -1)
-            {
+            if (idx != -1 && data.type == PktType::DATA) {
                 load_user_messages(data, socket_fd);
                 strcpy(data.message, "<entrou no grupo>");
             }
@@ -319,6 +316,9 @@ void receive_message(int socket_fd)
         if (idx != -1)
         {
             update_user_connection(data, idx);
+
+            if (data.type == PktType::RECONNECTION)
+                continue;
 
             if (!was_connected)
             {
@@ -342,63 +342,58 @@ void receive_message(int socket_fd)
     }
 }
 
-int send_ip_to_front(char *front_ip, int front_port, server_info data, server_info *resp)
-{
-    ClientSocket front(front_ip, front_port);
-    if (!front.Connect(false))
-        return -1;
+void im_a_backup(int my_port) {
+    string server_ip = "127.0.0.1";
+    ClientSocket backup(server_ip.c_str(), server_port);
 
-    int bytes_written = front.SendData(reinterpret_cast<void *>(&data), sizeof(server_info));
+    if (!backup.Connect())
+        error("Error connecting to main server.");
 
-    if (bytes_written != sizeof(server_info))
-        return -1;
+    packet data;
+    data.timestamp = my_port;
+    data.type = PktType::BACKUP;
+    if (backup.SendData(&data, sizeof(packet)) != sizeof(packet))
+        error("Error sending info to main server.");
 
-    bzero(resp, sizeof(server_info));
-    int bytes_read;
-    front.ReceiveData(resp, sizeof(server_info), &bytes_read);
-    front.Disconnect();
-
-    if (bytes_read == 0)
-        return -1;
-    
-    if (bytes_read == sizeof(server_info)){
-        fprintf(stderr, "Main server: %s:%d\n", resp->ip, resp->port);
-        return 0;
-    }
-
-    return 1;
-}
-
-void connect_to_main_server(server_info srv_info)
-{
-    ClientSocket client(srv_info.ip, srv_info.port);
-    if (!client.Connect())
-        return;
-    
-    packet data = {0, "", "", "", PktType::BACKUP};
-
-    int bytes_written = client.SendData(reinterpret_cast<void *>(&data), sizeof(packet));
-    if (bytes_written != sizeof(packet))
-        return;
-    
-    int bytes_read;
-
-    while (client.IsConnected())
-    {
-        bool result = client.ReceivePacket(&data, &bytes_read);
-
-        if (!result)
-        {
-            if (bytes_read == sizeof(packet) && data.type != PktType::DATA)
+    int bytes_received;
+    while (backup.IsConnected()) {
+        if(!backup.ReceivePacket(&data, &bytes_received)){
+            if (bytes_received == sizeof(packet))
                 continue;
-            break;
+            if (bytes_received == sizeof(backups_table)){
+                str_backups *tmp_table = reinterpret_cast<str_backups *>(&data);
+
+                for (int i = 0; i < MAX_BACKUPS; i++){
+                    backups_table[i].free = tmp_table[i].free;
+                    backups_table[i].port = tmp_table[i].port;
+                }
+            }
         }
-
-        fprintf(stderr, "%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
-
-        if (!save_message(data))
-            error("Error saving message\n");
+        else {
+            if (!save_message(data))
+                error("Error saving message\n");
+            else {
+                data.type = PktType::ACK;
+                backup.SendData(&data, sizeof(packet));
+            }
+        }
     }
+    backup.Disconnect();
+
+    // Decide wich backup will be the new server
+    int max_port = my_port;
+    for (int i = 1; i < MAX_BACKUPS; i++){
+        if (!backups_table[i].free && backups_table[i].port > max_port)
+            max_port = backups_table[i].port;
+    }
+
+    if (max_port == my_port)
+        return;
+
+    sleep(1);
+    im_a_backup(my_port);
+
+    //error("Error communicating with main server.");
 }
 
 /**
@@ -408,35 +403,33 @@ void connect_to_main_server(server_info srv_info)
  */
 int main(int argc, char *argv[])
 {
+    // Change SIGPIPE from socket server to SIG_IGN to avoid crashes 
+    signal(SIGPIPE, SIG_IGN);
+
     // Clear data structures to avoid memory trash
-    init_clients();
+    init_data_structures();
 
-    if (argc < 5 || argc > 6)
-        error("Use: <server_ip> <server_port> <front_ip> <front_port> <N>");
+    if (argc < 3 || argc > 4)
+        error("Use: [main_server_port] [num_msgs] <bkp_srv_port> ");
+    
+    server_port = atoi(argv[1]);
+    qtde_msgs = atoi(argv[2]);
 
-    int front_ip = atoi(argv[4]);
-    server_info srv_info, srv_resp;
-    strcpy(srv_info.ip, argv[1]);
-    srv_info.port = atoi(argv[2]);
-    int resp = 0;
+    if (argc == 4){
+        fprintf(stderr, "It's a backup :)\n");
+        int my_port = atoi(argv[3]);
+        im_a_backup(my_port);
+    }
 
-    do {
-        resp = send_ip_to_front(argv[3], front_ip, srv_info, &srv_resp);
-        if (resp < 0)
-            error("Front unavailable");
-        if (resp == 0) {
-            connect_to_main_server(srv_resp);
-            sleep(1);
-        }
-    } while (resp <= 0);
+    init_data_structures();
 
-    if (argc == 6)
-        qtde_msgs = atoi(argv[5]);
+    backups_table[0].free = false;
+    backups_table[0].port = server_port;
+    fprintf(stderr, "New server :)\n");
 
-    int portno = atoi(argv[2]);
-
-    server = new ServerSocket(portno);
-    switch(((ServerSocket*)server)->Start())
+    usleep(100000);
+    server = new ServerSocket(server_port);
+    switch(server->Start())
     {
         case -1:
             error("ERROR opening socket"); break;
@@ -450,15 +443,14 @@ int main(int argc, char *argv[])
 
     std::cerr << "Server Started!" << endl;
 
-    thread timeout(check_connection_timeout);
-    timeout.detach();
+    /*thread timeout(check_connection_timeout);
+    timeout.detach();*/
 
     int newsockfd;
-
-    while (newsockfd = ((ServerSocket*)server)->WaitNewConnection())
+    while (newsockfd = server->WaitNewConnection())
     {
         if (newsockfd < 0) {
-            ((ServerSocket*)server)->Disconnect();
+            server->Disconnect();
             error("ERROR on accept");
         }
 
@@ -468,5 +460,5 @@ int main(int argc, char *argv[])
         receive_msg.detach();
     }
 
-    ((ServerSocket*)server)->Disconnect();
+    server->Disconnect();
 }

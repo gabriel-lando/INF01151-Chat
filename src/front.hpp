@@ -5,13 +5,15 @@
 typedef struct
 {
     bool free;
-    ClientSocket *server_socket;
-    int socket_id_client;
+    ClientSocket *socket;
+    int socket_id;
 } str_clients_front;
 
-void connect_to_server();
-bool create_new_connection(ClientSocket *new_socket);
-//ClientSocket* connect_client_to_server();
+int get_free_client();
+int find_user_idx(int socket_id);
+void close_client_conn(int socket_id);
+void release_connection(int index);
+bool create_server_connection(int idx);
+void release_connection_by_id(int socket_id);
 bool send_message(packet pkt, int socket_id);
-void release_connection_by_id(int socket_id_client);
-int write_to_socket(void *pkt, int size, int socket_id);
+void send_error_to_client(packet data, int socket_fd);
