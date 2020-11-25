@@ -325,6 +325,7 @@ void receive_message(int socket_fd)
 
         bool was_connected = false;
         int idx = find_user_idx(socket_fd);
+        fprintf(stderr, "Aqui [%s]: %d\n", data.username, idx);
         if (idx == -1) {
             /* if user was not found on the clients array, add a new one */
             idx = add_new_user(data, socket_fd, &was_connected);
@@ -334,6 +335,7 @@ void receive_message(int socket_fd)
                 strcpy(data.message, "<entrou no grupo>");
             }
         }
+        fprintf(stderr, "Aqui 2 [%s]: %d\n", data.username, idx);
 
         if (idx != -1)
         {

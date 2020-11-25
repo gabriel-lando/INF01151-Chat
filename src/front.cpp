@@ -19,14 +19,13 @@ void init_clients()
     data_mtx.unlock();
 }
 
-void receive_message_from_server(/*ClientSocket *socket, */int idx)
+void receive_message_from_server(int idx, string username, string groupname)
 {
     try {
         packet buffer;
         int bytes_read;
         int client_id = clients[idx].socket_id;
         ClientSocket *socket = clients[idx].socket;
-        string username, groupname;
 
         while (socket->IsConnected())
         {
@@ -36,14 +35,19 @@ void receive_message_from_server(/*ClientSocket *socket, */int idx)
                 // Try to reconnect with server
                 data_mtx.lock();
                 if (clients[idx].free == false) {
-                    while (!create_server_connection(idx)) { sleep(1); }
+                    socket_mtx.lock();
+                    while (!create_server_connection(idx, username, groupname)) { sleep(1); }
+                    socket_mtx.unlock();
 
                     packet pkt;
                     pkt.timestamp = get_time();
                     pkt.type = PktType::RECONNECTION;
                     strcpy(pkt.groupname, groupname.c_str());
                     strcpy(pkt.username, username.c_str());
+
+                    socket_mtx.lock();
                     clients[idx].socket->SendData(&pkt, sizeof(packet));
+                    socket_mtx.unlock();
                 }
                 data_mtx.unlock();
                 break;
@@ -51,10 +55,6 @@ void receive_message_from_server(/*ClientSocket *socket, */int idx)
 
             /* Success receiving a message */
             if (bytes_read == sizeof(packet)) {
-                if (groupname.length() == 0){
-                    groupname = buffer.groupname;
-                    username = buffer.username;
-                }
                 send_message(buffer, client_id);
             }
             else {
@@ -66,12 +66,12 @@ void receive_message_from_server(/*ClientSocket *socket, */int idx)
     catch(...) { }
 }
 
-bool create_server_connection(int idx) {
+bool create_server_connection(int idx, string username, string groupname) {
     try {
         clients[idx].socket = new ClientSocket(server_ip.c_str(), server_port);
         
         if(clients[idx].socket->Connect()) {
-            std::thread receive_thread(receive_message_from_server, /*clients[idx].socket,*/ idx);
+            std::thread receive_thread(receive_message_from_server, idx, username, groupname);
             receive_thread.detach();
             return true;
         }
@@ -99,7 +99,7 @@ int add_new_user(packet pkt, int socket_id)
         return -1;
     }
 
-    if (!create_server_connection(idx)){
+    if (!create_server_connection(idx, pkt.username, pkt.groupname)){
         data_mtx.unlock();  
         return -1;
     }
@@ -142,12 +142,6 @@ void manage_client(int socket_fd)
             catch(...) { }
             socket_mtx.unlock();
 
-            /*// Try to reconnect with server
-            if (n != sizeof(packet)){
-                //data_mtx.lock();
-                while (!create_server_connection(idx)) { sleep(1); }
-                //data_mtx.unlock();
-            }*/
             if (n != sizeof(packet))
                 fprintf(stderr, "Server connection error\n");
         }
