@@ -3,7 +3,7 @@
 
 #include "helper.hpp"
 
-#define PING_TIME 1000000 //1.000.000 us = 1s 
+#define PING_TIME 10000 //10.000 us = 10ms 
 
 class ClientSocket {
 public:

@@ -229,8 +229,30 @@ void send_message(packet pkt)
         return;
     }
 
-    /* Writes the message to all clients connected. Using a mutex to maintain consistency of the messages */
     socket_mtx.lock();
+    packet response;
+    memcpy(&response, &pkt, sizeof(packet));
+    int bytes_received;
+    for (int i = 1; i < MAX_BACKUPS; i++){
+        if(backups_table[i].free)
+            continue;
+        write_to_socket(response, backups_sockets[i]);
+
+        //fprintf(stderr, "Sent to bkp %d: %s %s [%s]: %s\n", i, (get_timestamp(response.timestamp)).c_str(), response.username, response.groupname, response.message);
+
+        packet ack;
+        do {
+            if(!server->ReceivePacket(&ack, &bytes_received, backups_sockets[i])){
+                if (bytes_received == sizeof(packet))
+                    continue;
+                socket_mtx.unlock();
+                return;
+            }
+        } while (ack.type != PktType::ACK);
+    }
+
+    /* Writes the message to all clients connected. Using a mutex to maintain consistency of the messages */
+    //socket_mtx.lock();
     for (int i = 0; i < MAX_CONNS; i++)
     {
         if (clients[i].free || strcmp((char *)clients[i].group, pkt.groupname))
@@ -357,11 +379,11 @@ void im_a_backup(int my_port) {
 
     int bytes_received;
     while (backup.IsConnected()) {
-        if(!backup.ReceivePacket(&data, &bytes_received)){
+        if(!backup.ReceivePacket(&data, &bytes_received)) {
             if (bytes_received == sizeof(packet))
                 continue;
             if (bytes_received == sizeof(backups_table)){
-                str_backups *tmp_table = reinterpret_cast<str_backups *>(&data);
+                str_backups *tmp_table = reinterpret_cast<str_backups*>(&data);
 
                 for (int i = 0; i < MAX_BACKUPS; i++){
                     backups_table[i].free = tmp_table[i].free;
@@ -370,6 +392,7 @@ void im_a_backup(int my_port) {
             }
         }
         else {
+            //fprintf(stderr, "%s %s [%s]: %s\n", (get_timestamp(data.timestamp)).c_str(), data.username, data.groupname, data.message);
             if (!save_message(data))
                 error("Error saving message\n");
             else {
@@ -427,7 +450,7 @@ int main(int argc, char *argv[])
     backups_table[0].port = server_port;
     fprintf(stderr, "New server :)\n");
 
-    usleep(100000);
+    usleep(50000);
     server = new ServerSocket(server_port);
     switch(server->Start())
     {

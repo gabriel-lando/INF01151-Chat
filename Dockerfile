@@ -6,7 +6,10 @@ RUN apt-get -yq dist-upgrade
 RUN apt-get -yq install build-essential git net-tools
 
 # Clone Sisop 2 - Chat repository
-RUN git clone https://github.com/TMinuzzo/chat.git /chat
+# RUN git clone https://github.com/TMinuzzo/chat.git /chat
+# Copy files to Docker image
+ADD ./Makefile /chat/Makefile
+ADD ./src/* /chat/src/
 
 # Build Chat
 RUN cd /chat && make rebuild
