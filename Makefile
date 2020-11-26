@@ -17,26 +17,31 @@ BUILDDIR := build
 ## Executables
 CLIENTEXE := bin/client
 SERVEREXE := bin/server
+FRONTEXE  := bin/front
 ## Sources
 RAWCLIENTSRCS := client.cpp
 CLIENTSRCS = $(addprefix $(SRCDIR)/, $(RAWCLIENTSRCS))
 RAWSERVERSRCS := server.cpp
 SERVERSRCS = $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
+RAWFRONTSRCS := front.cpp
+FRONTSRCS = $(addprefix $(SRCDIR)/, $(RAWFRONTSRCS))
 ## Sources used by both
-RAWSRCS = helper.cpp io.cpp
+RAWSRCS = helper.cpp io.cpp client_socket.cpp server_socket.cpp
 SRCS = $(addprefix $(SRCDIR)/, $(RAWSRCS))
 ## Object files
 RAWCLIENTOBJS := $(RAWCLIENTSRCS:%.cpp=%.o)
 CLIENTOBJS := $(addprefix $(SRCDIR)/, $(RAWCLIENTSRCS))
 RAWSERVEROBJS := $(RAWSERVERSRCS:%.cpp=%.o)
 SERVEROBJS := $(addprefix $(SRCDIR)/, $(RAWSERVERSRCS))
+RAWFRONTOBJS := $(RAWFRONTSRCS:%.cpp=%.o)
+FRONTOBJS := $(addprefix $(SRCDIR)/, $(RAWFRONTSRCS))
 RAWOBJS := $(RAWSRCS:%.cpp=%.o)
 OBJS := $(addprefix $(BUILDDIR)/, $(RAWOBJS))
 
 .PHONY: directories
 
 # Rules
-all: directories $(CLIENTEXE) $(SERVEREXE)
+all: directories $(CLIENTEXE) $(SERVEREXE) $(FRONTEXE)
 	@echo " ";
 	@echo " Done!"
 
@@ -53,6 +58,11 @@ $(SERVEREXE): $(OBJS) $(SERVEROBJS)
 	@echo " ";
 	@echo " Link server:";
 	$(CC) $^ -o $(SERVEREXE) $(LIB)
+
+$(FRONTEXE): $(OBJS) $(FRONTOBJS)
+	@echo " ";
+	@echo " Link front:";
+	$(CC) $^ -o $(FRONTEXE) $(LIB)
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 	@echo " ";
